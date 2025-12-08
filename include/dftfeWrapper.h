@@ -138,6 +138,8 @@ namespace dftfe
      * for Device runs. If set to true Device to MPI task binding is set inside
      * the DFT-FE code. Default behaviour is false which assumes the binding has
      * been externally set.
+     *
+     * // Mehul: Modified constructor to accept polynomialOrder, tolerance, xc
      */
     dftfeWrapper(
       const MPI_Comm                        &mpi_comm_parent,
@@ -156,6 +158,9 @@ namespace dftfe
       const dftfe::uInt              npkpt                  = 0,
       const double                   meshSize               = 0.8,
       const double                   scfMixingParameter     = 0.2,
+      const dftfe::Int               polynomialOrder        = 7,
+      const double                   tolerance              = 5e-6,
+      const std::string              xc                     = "GGA-PBE",
       const dftfe::Int               verbosity              = -1,
       const bool setDeviceToMPITaskBindingInternally        = false);
 
@@ -192,6 +197,7 @@ namespace dftfe
            const bool        useDevice                           = false,
            const bool        isScfRestart                        = true);
 
+    // Mehul: Modified reinit to accept new parameters
     void
     reinit(const MPI_Comm                        &mpi_comm_parent,
            const bool                             useDevice,
@@ -211,6 +217,9 @@ namespace dftfe
            const dftfe::uInt              npkpt                  = 0,
            const double                   meshSize               = 0.8,
            const double                   scfMixingParameter     = 0.2,
+           const dftfe::Int               polynomialOrder        = 7,
+           const double                   tolerance              = 5e-6,
+           const std::string              xc                     = "GGA-PBE",
            const dftfe::Int               verbosity              = -1,
            const bool setDeviceToMPITaskBindingInternally        = false);
 

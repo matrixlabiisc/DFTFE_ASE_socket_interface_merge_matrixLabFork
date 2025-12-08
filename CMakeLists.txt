@@ -77,6 +77,7 @@ endif()
 # Declare all source files the target consists of:
 SET(TARGET_SRC
   ./src/dftfeWrapper.cc
+  ./src/socket_interface.cc # Mehul: Added socket interface source
   ./src/dft/dft.cc
   ./src/dft/vselfBinsManager.cc
   ./src/dft/energyCalculator.cc

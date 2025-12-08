@@ -1,0 +1,57 @@
+#ifndef SOCKET_INTERFACE_H
+#define SOCKET_INTERFACE_H
+
+// Mehul: Created this header for Socket Interface
+#include <string>
+#include <vector>
+#include <mpi.h>
+#include "dftfeWrapper.h"
+
+namespace dftfe {
+
+class SocketDriver {
+public:
+    SocketDriver(const std::string& host, int port, MPI_Comm comm);
+    ~SocketDriver();
+    void run();
+
+private:
+    std::string host;
+    int port;
+    MPI_Comm comm;
+    int rank;
+    int sockfd;
+
+    void connect_socket();
+    void close_socket();
+    void send_data(const std::string& data);
+    std::string receive_data();
+    
+    // Simple JSON helpers
+    void parse_request(const std::string& json, 
+                       std::vector<std::vector<double>>& coords, 
+                       std::vector<std::vector<double>>& cell, 
+                       std::vector<dftfe::uInt>& numbers,
+                       std::vector<bool>& pbc,
+                       std::vector<dftfe::uInt>& mp_grid,
+                       std::vector<bool>& mp_grid_shift,
+                       bool& spin_polarized,
+                       double& start_magnetization,
+                       double& fermi_temp,
+                       dftfe::uInt& npkpt,
+                       double& mesh_size,
+                       double& scf_mixing,
+                       dftfe::Int& polynomial_order,
+                       double& tolerance,
+                       std::string& xc,
+                       dftfe::Int& verbosity,
+                       bool& use_device,
+                       std::string& cmd);
+                       
+    std::string format_response(double energy, 
+                                const std::vector<std::vector<double>>& forces, 
+                                const std::vector<std::vector<double>>& stress);
+};
+
+}
+#endif
