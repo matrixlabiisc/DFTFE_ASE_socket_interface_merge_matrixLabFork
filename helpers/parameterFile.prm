@@ -29,7 +29,10 @@ end
 subsection Finite element mesh parameters
   set POLYNOMIAL ORDER=6
   subsection Auto mesh generation parameters
-    set MESH SIZE AROUND ATOM=1.0
+    set ATOM BALL RADIUS      = 1.5
+    set BASE MESH SIZE        = 0.0
+    set MESH SIZE AROUND ATOM = 0.5
+    set MESH SIZE AT ATOM     = 0.0
   end
 end
 
@@ -55,3 +58,5 @@ subsection SCF parameters
   set TOLERANCE=1e-5
   set MIXING PARAMETER=0.2
 end
+
+

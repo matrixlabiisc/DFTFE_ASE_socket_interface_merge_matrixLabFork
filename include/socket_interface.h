@@ -44,6 +44,17 @@ private:
                        dftfe::Int& polynomial_order,
                        double& tolerance,
                        std::string& xc,
+                       double& atom_ball_radius,
+                       dftfe::uInt& num_kohn_sham,
+                       std::string& orthogonalization_type,
+                       // New parameters
+                       bool& smeared_nuclear_charges,
+                       bool& use_group_symmetry,
+                       bool& use_time_reversal_symmetry,
+                       dftfe::Int& mixing_history,
+                       dftfe::Int& max_scf_iterations,
+                       dftfe::Int& dispersion_correction_type,
+                       bool& pseudopotential_calculation,
                        dftfe::Int& verbosity,
                        bool& use_device,
                        std::string& cmd);

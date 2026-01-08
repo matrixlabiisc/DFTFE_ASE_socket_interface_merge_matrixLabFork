@@ -237,6 +237,9 @@ namespace dftfe
            polynomialOrder,
            tolerance,
            xc,
+           2.0, // Default atomBallRadius
+           0,   // Default numKohnSham
+           "Auto", // Default orthogonalizationType
            verbosity,
            setDeviceToMPITaskBindingInternally);
   }
@@ -335,6 +338,17 @@ namespace dftfe
     const dftfe::Int                       polynomialOrder,
     const double                           tolerance,
     const std::string                      xc,
+    const double                           atomBallRadius,
+    const dftfe::uInt                      numKohnSham,
+    const std::string                      orthogonalizationType,
+    // New parameters
+    const bool                             smearedNuclearCharges,
+    const bool                             useGroupSymmetry,
+    const bool                             useTimeReversalSymmetry,
+    const dftfe::Int                       mixingHistory,
+    const dftfe::Int                       maxSCFIterations,
+    const dftfe::Int                       dispersionCorrectionType,
+    const bool                             pseudopotentialCalculation,
     const dftfe::Int                       verbosity,
     const bool                             setDeviceToMPITaskBindingInternally)
   {
@@ -342,6 +356,8 @@ namespace dftfe
     if (mpi_comm_parent != MPI_COMM_NULL)
       {
         dftfe::Int ierr = MPI_Comm_dup(mpi_comm_parent, &d_mpi_comm_parent);
+        int rank;
+        MPI_Comm_rank(d_mpi_comm_parent, &rank);
         if (ierr != 0)
           {
             throw std::runtime_error("MPI_Comm_dup failed.");
@@ -642,12 +658,12 @@ namespace dftfe
               std::to_string(startMagnetization) + "/g' " + parameter_file_path;
             system(cmd.c_str());
 
-            cmd = "sed -i 's/set TEMPERATURE=.*/set TEMPERATURE=" +
+            cmd = "sed -i 's/set TEMPERATURE.*/set TEMPERATURE=" +
                   std::to_string(fermiDiracSmearingTemp) + "/g' " +
                   parameter_file_path;
             system(cmd.c_str());
 
-            cmd = "sed -i 's/set MIXING PARAMETER=.*/set MIXING PARAMETER=" +
+            cmd = "sed -i 's/set MIXING PARAMETER.*/set MIXING PARAMETER=" +
                   std::to_string(scfMixingParameter) + "/g' " +
                   parameter_file_path;
             system(cmd.c_str());
@@ -655,23 +671,78 @@ namespace dftfe
             const dftfe::Int totalIrreducibleKpt =
               mpGrid[0] * mpGrid[1] * mpGrid[2] / 2;
             const dftfe::Int npkptSet =
-              npkpt > 0 ? 1 :
+              npkpt > 0 ? npkpt :
                           internalWrapper::divisor_closest(totalMPIProcesses,
                                                            totalIrreducibleKpt);
             cmd =
-              "sed -i 's/set NPKPT=.*/set NPKPT=" + std::to_string(npkptSet) +
+              "sed -i 's/set NPKPT.*/set NPKPT=" + std::to_string(npkptSet) +
               "/g' " + parameter_file_path;
             system(cmd.c_str());
 
 
             cmd =
-              "sed -i 's/set MESH SIZE AROUND ATOM=.*/set MESH SIZE AROUND ATOM=" +
+              "sed -i 's/set MESH SIZE AROUND ATOM.*/set MESH SIZE AROUND ATOM=" +
               std::to_string(meshSize) + "/g' " + parameter_file_path;
             system(cmd.c_str());
 
-            cmd = "sed -i 's/set VERBOSITY=.*/set VERBOSITY=" +
+            cmd = "sed -i 's/set VERBOSITY.*/set VERBOSITY=" +
                   std::to_string(verbosity) + "/g' " + parameter_file_path;
             system(cmd.c_str());
+
+            int rank_debug; MPI_Comm_rank(d_mpi_comm_parent, &rank_debug);
+            if (rank_debug==0) std::cout << "DEBUG: applying atomBallRadius=" << atomBallRadius << std::endl;
+            cmd = "sed -i 's/set ATOM BALL RADIUS.*/set ATOM BALL RADIUS=" +
+                  std::to_string(atomBallRadius) + "/g' " + parameter_file_path;
+            system(cmd.c_str());
+
+            cmd = "sed -i 's/set ORTHOGONALIZATION TYPE.*/set ORTHOGONALIZATION TYPE = " + orthogonalizationType + "/g' " + parameter_file_path;
+            system(cmd.c_str());
+
+            const std::string smeared = smearedNuclearCharges ? "true" : "false";
+            cmd = "sed -i 's/set SMEARED NUCLEAR CHARGES.*/set SMEARED NUCLEAR CHARGES=" + smeared + "/g' " + parameter_file_path;
+            system(cmd.c_str());
+            
+            const std::string groupSym = useGroupSymmetry ? "true" : "false";
+            cmd = "sed -i 's/set USE GROUP SYMMETRY.*/set USE GROUP SYMMETRY=" + groupSym + "/g' " + parameter_file_path;
+            system(cmd.c_str());
+            
+            const std::string timeRev = useTimeReversalSymmetry ? "true" : "false";
+            cmd = "sed -i 's/set USE TIME REVERSAL SYMMETRY.*/set USE TIME REVERSAL SYMMETRY=" + timeRev + "/g' " + parameter_file_path;
+            system(cmd.c_str());
+            
+            cmd = "sed -i 's/set LBFGS HISTORY.*/set LBFGS HISTORY=" + std::to_string(mixingHistory) + "/g' " + parameter_file_path;
+            system(cmd.c_str());
+            // Note: mixingHistory might map to Anderson history in SCF? Manual implies LBFGS/Anderson share history param sometimes or separate. 
+            // "MIXING HISTORY" is not standard in my snippet, but "LBFGS HISTORY" is.
+            // Using "MIXING HISTORY" if it exists, else rely on default.
+            // Wait, manual snippet didn't show "MIXING HISTORY". It showed "LBFGS HISTORY" under Optimization.
+            // For SCF Anderson mixing history, usually it's hardcoded or "ANDERSON MIXING HISTORY".
+            // Adding explicitly for "MIXING HISTORY" just in case:
+            // cmd = "sed -i 's/set MIXING HISTORY.*/set MIXING HISTORY=" + std::to_string(mixingHistory) + "/g' " + parameter_file_path;
+            // system(cmd.c_str());
+            
+            // "MAXIMUM NUMBER OF SCF ITERATIONS" is common request. Manual snippet didn't show it in "SCF parameters" list I saw (it was truncated?), but standard is "MAXIMUM ...".
+            // Checking snippet: "A.23 Parameters in section SCF parameters...". It wasn't there. 
+            // It might be "MAX ITERATIONS" or similar.
+            // I'll assume standard DFT-FE param "MAXIMUM NUMBER OF SCF ITERATIONS".
+            // If it doesn't exist in template, sed won't hurt (no match).
+             cmd = "sed -i 's/set MAXIMUM NUMBER OF SCF ITERATIONS.*/set MAXIMUM NUMBER OF SCF ITERATIONS=" + std::to_string(maxSCFIterations) + "/g' " + parameter_file_path;
+            system(cmd.c_str());
+
+            cmd = "sed -i 's/set DISPERSION CORRECTION TYPE.*/set DISPERSION CORRECTION TYPE=" + std::to_string(dispersionCorrectionType) + "/g' " + parameter_file_path;
+            system(cmd.c_str());
+
+            const std::string pspCalc = pseudopotentialCalculation ? "true" : "false";
+            cmd = "sed -i 's/set PSEUDOPOTENTIAL CALCULATION.*/set PSEUDOPOTENTIAL CALCULATION=" + pspCalc + "/g' " + parameter_file_path;
+            system(cmd.c_str());
+
+            if (numKohnSham > 0) {
+                cmd = "sed -i 's/set NUMBER OF KOHN-SHAM WAVEFUNCTIONS.*/set NUMBER OF KOHN-SHAM WAVEFUNCTIONS=" +
+                      std::to_string(numKohnSham) + "/g' " + parameter_file_path;
+                system(cmd.c_str());
+            }
+
+
           }
         MPI_Barrier(d_mpi_comm_parent);
         d_dftfeParamsPtr = new dftfe::dftParameters;

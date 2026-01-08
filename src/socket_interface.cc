@@ -242,6 +242,17 @@ void SocketDriver::parse_request(const std::string& json,
                    dftfe::Int& polynomial_order,
                    double& tolerance,
                    std::string& xc,
+                   double& atom_ball_radius,
+                   dftfe::uInt& num_kohn_sham,
+                   std::string& orthogonalization_type,
+                   // New parameters
+                   bool& smeared_nuclear_charges,
+                   bool& use_group_symmetry,
+                   bool& use_time_reversal_symmetry,
+                   dftfe::Int& mixing_history,
+                   dftfe::Int& max_scf_iterations,
+                   dftfe::Int& dispersion_correction_type,
+                   bool& pseudopotential_calculation,
                    dftfe::Int& verbosity,
                    bool& use_device,
                    std::string& cmd) {
@@ -273,6 +284,19 @@ void SocketDriver::parse_request(const std::string& json,
     polynomial_order = parse_scalar<dftfe::Int>(json, "polynomial_order", 7);
     tolerance = parse_scalar<double>(json, "tolerance", 5e-6);
     xc = parse_string(json, "xc", "GGA-PBE");
+    atom_ball_radius = parse_scalar<double>(json, "atom_ball_radius", 2.0);
+    num_kohn_sham = parse_scalar<dftfe::uInt>(json, "num_kohn_sham", 0);
+    orthogonalization_type = parse_string(json, "orthogonalization_type", "Auto");
+    
+    // New parameters parsing
+    smeared_nuclear_charges = parse_scalar<bool>(json, "smeared_nuclear_charges", true);
+    use_group_symmetry = parse_scalar<bool>(json, "use_group_symmetry", false);
+    use_time_reversal_symmetry = parse_scalar<bool>(json, "use_time_reversal_symmetry", false);
+    mixing_history = parse_scalar<dftfe::Int>(json, "mixing_history", 10);
+    max_scf_iterations = parse_scalar<dftfe::Int>(json, "max_scf_iterations", 200);
+    dispersion_correction_type = parse_scalar<dftfe::Int>(json, "dispersion_correction_type", 0);
+    pseudopotential_calculation = parse_scalar<bool>(json, "pseudopotential_calculation", true);
+    
     verbosity = parse_scalar<dftfe::Int>(json, "verbosity", 1);
     use_device = parse_scalar<bool>(json, "use_device", false);
 }
@@ -369,13 +393,30 @@ void SocketDriver::run() {
         dftfe::Int polynomial_order;
         double tolerance;
         std::string xc;
+        double atom_ball_radius;
+        dftfe::uInt num_kohn_sham;
+        std::string orthogonalization_type;
         dftfe::Int verbosity;
         bool use_device;
         std::string cmd;
         
+        // New parameters
+        bool smeared_nuclear_charges;
+        bool use_group_symmetry;
+        bool use_time_reversal_symmetry;
+        dftfe::Int mixing_history;
+        dftfe::Int max_scf_iterations;
+        dftfe::Int dispersion_correction_type;
+        bool pseudopotential_calculation;
+        
         parse_request(json, new_coords, new_cell, numbers, pbc, 
                       mp_grid, mp_grid_shift, spin_polarized, start_magnetization,
-                      fermi_temp, npkpt, mesh_size, scf_mixing, polynomial_order, tolerance, xc, verbosity, use_device,
+                      fermi_temp, npkpt, mesh_size, scf_mixing, polynomial_order, tolerance, xc, 
+                      atom_ball_radius, num_kohn_sham, orthogonalization_type,
+                      smeared_nuclear_charges, use_group_symmetry, use_time_reversal_symmetry,
+                      mixing_history, max_scf_iterations, dispersion_correction_type,
+                      pseudopotential_calculation,
+                      verbosity, use_device,
                       cmd);
         
         if (cmd == "exit") {
@@ -404,6 +445,16 @@ void SocketDriver::run() {
                        polynomial_order,
                        tolerance,
                        xc,
+                       atom_ball_radius,
+                       num_kohn_sham,
+                       orthogonalization_type,
+                       smeared_nuclear_charges,
+                       use_group_symmetry,
+                       use_time_reversal_symmetry,
+                       mixing_history,
+                       max_scf_iterations,
+                       dispersion_correction_type,
+                       pseudopotential_calculation,
                        verbosity,
                        false); // setDeviceToMPITaskBindingInternally
                        
