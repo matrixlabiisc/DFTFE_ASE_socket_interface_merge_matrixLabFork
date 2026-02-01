@@ -233,7 +233,8 @@ namespace dftfe
            const bool                     pseudopotentialCalculation = true,
            
            const dftfe::Int               verbosity              = -1,
-           const bool setDeviceToMPITaskBindingInternally        = false);
+           const bool setDeviceToMPITaskBindingInternally        = false,
+           const bool                     keepScratch            = false); // New parameter
 
     void
     clear();
@@ -411,6 +412,7 @@ namespace dftfe
     dftParameters *d_dftfeParamsPtr;
     std::string    d_scratchFolderName;
     bool           d_isDeviceToMPITaskBindingSetInternally;
+    bool           d_keepScratch;
   };
 } // namespace dftfe
 #endif

@@ -255,6 +255,7 @@ void SocketDriver::parse_request(const std::string& json,
                    bool& pseudopotential_calculation,
                    dftfe::Int& verbosity,
                    bool& use_device,
+                   bool& keep_scratch, // New parameter
                    std::string& cmd) {
     // Simple parsing
     if (json.find("\"cmd\": \"exit\"") != std::string::npos || json == "EXIT") {
@@ -294,6 +295,9 @@ void SocketDriver::parse_request(const std::string& json,
     use_time_reversal_symmetry = parse_scalar<bool>(json, "use_time_reversal_symmetry", false);
     mixing_history = parse_scalar<dftfe::Int>(json, "mixing_history", 10);
     max_scf_iterations = parse_scalar<dftfe::Int>(json, "max_scf_iterations", 200);
+    // New optional parameter for debugging
+    // New optional parameter for debugging
+    keep_scratch = parse_scalar<bool>(json, "keep_scratch", false);
     dispersion_correction_type = parse_scalar<dftfe::Int>(json, "dispersion_correction_type", 0);
     pseudopotential_calculation = parse_scalar<bool>(json, "pseudopotential_calculation", true);
     
@@ -408,6 +412,7 @@ void SocketDriver::run() {
         dftfe::Int max_scf_iterations;
         dftfe::Int dispersion_correction_type;
         bool pseudopotential_calculation;
+        bool keep_scratch; // New variable
         
         parse_request(json, new_coords, new_cell, numbers, pbc, 
                       mp_grid, mp_grid_shift, spin_polarized, start_magnetization,
@@ -417,6 +422,7 @@ void SocketDriver::run() {
                       mixing_history, max_scf_iterations, dispersion_correction_type,
                       pseudopotential_calculation,
                       verbosity, use_device,
+                      keep_scratch,
                       cmd);
         
         if (cmd == "exit") {
@@ -456,7 +462,8 @@ void SocketDriver::run() {
                        dispersion_correction_type,
                        pseudopotential_calculation,
                        verbosity,
-                       false); // setDeviceToMPITaskBindingInternally
+                       false, // setDeviceToMPITaskBindingInternally
+                       keep_scratch); // keepScratch
                        
             initialized = true;
             if (rank == 0) std::cout << "SocketDriver: dftfeWrapper initialized." << std::endl;

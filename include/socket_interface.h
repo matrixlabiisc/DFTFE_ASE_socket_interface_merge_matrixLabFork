@@ -57,6 +57,7 @@ private:
                        bool& pseudopotential_calculation,
                        dftfe::Int& verbosity,
                        bool& use_device,
+                       bool& keep_scratch, // New parameter
                        std::string& cmd);
                        
     std::string format_response(double energy, 

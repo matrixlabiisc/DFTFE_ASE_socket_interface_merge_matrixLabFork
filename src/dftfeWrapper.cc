@@ -38,6 +38,7 @@
 #include <sstream>
 #include <sys/stat.h>
 #include <chrono>
+#include <unistd.h> // For sleep
 #include <sys/time.h>
 #include <ctime>
 
@@ -350,7 +351,8 @@ namespace dftfe
     const dftfe::Int                       dispersionCorrectionType,
     const bool                             pseudopotentialCalculation,
     const dftfe::Int                       verbosity,
-    const bool                             setDeviceToMPITaskBindingInternally)
+    const bool                             setDeviceToMPITaskBindingInternally,
+    const bool                             keepScratch)
   {
     clear();
     if (mpi_comm_parent != MPI_COMM_NULL)
@@ -521,13 +523,34 @@ namespace dftfe
 
             const std::string dftfeCoordsFileName =
               d_scratchFolderName + "/coordinates.inp";
-            dftUtils::writeDataIntoFile(dftfeCoordinates, dftfeCoordsFileName);
+            {
+               std::ofstream coordsFile(dftfeCoordsFileName);
+               coordsFile.precision(16);
+               for(const auto &row : dftfeCoordinates) {
+                   for(size_t i=0; i<row.size(); ++i) {
+                       coordsFile << row[i] << (i == row.size()-1 ? "" : " ");
+                   }
+                   coordsFile << "\n";
+               }
+               coordsFile.close();
+            }
+
             //
             // write domainVectors.inp
             //
             const std::string dftfeCellFileName =
               d_scratchFolderName + "/domainVectors.inp";
-            dftUtils::writeDataIntoFile(cell, dftfeCellFileName);
+            {
+               std::ofstream cellFile(dftfeCellFileName);
+               cellFile.precision(16);
+               for(const auto &row : cell) {
+                   for(size_t i=0; i<row.size(); ++i) {
+                       cellFile << row[i] << (i == row.size()-1 ? "" : " ");
+                   }
+                   cellFile << "\n";
+               }
+               cellFile.close();
+            }
 
 
 
@@ -726,8 +749,9 @@ namespace dftfe
             // It might be "MAX ITERATIONS" or similar.
             // I'll assume standard DFT-FE param "MAXIMUM NUMBER OF SCF ITERATIONS".
             // If it doesn't exist in template, sed won't hurt (no match).
-             cmd = "sed -i 's/set MAXIMUM NUMBER OF SCF ITERATIONS.*/set MAXIMUM NUMBER OF SCF ITERATIONS=" + std::to_string(maxSCFIterations) + "/g' " + parameter_file_path;
-            system(cmd.c_str());
+             // DFT-FE uses "MAXIMUM ITERATIONS" inside SCF parameters
+             cmd = "sed -i 's/set MAXIMUM ITERATIONS.*/set MAXIMUM ITERATIONS=" + std::to_string(maxSCFIterations) + "/g' " + parameter_file_path;
+             system(cmd.c_str());
 
             cmd = "sed -i 's/set DISPERSION CORRECTION TYPE.*/set DISPERSION CORRECTION TYPE=" + std::to_string(dispersionCorrectionType) + "/g' " + parameter_file_path;
             system(cmd.c_str());
@@ -743,9 +767,14 @@ namespace dftfe
             }
 
 
-          }
+                system(cmd.c_str());
+                system("sync"); // Force filesystem flush
+            }
+          
         MPI_Barrier(d_mpi_comm_parent);
+        sleep(3); // Increased wait for NFS consistency
         d_dftfeParamsPtr = new dftfe::dftParameters;
+        d_dftfeParamsPtr->keepScratchFolder = keepScratch;
         d_dftfeParamsPtr->parse_parameters(parameter_file_path,
                                            d_mpi_comm_parent,
                                            false,
