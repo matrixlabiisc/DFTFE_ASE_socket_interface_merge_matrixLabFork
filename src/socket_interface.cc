@@ -246,6 +246,8 @@ void SocketDriver::parse_request(const std::string& json,
                    dftfe::uInt& num_kohn_sham,
                    std::string& orthogonalization_type,
                    // New parameters
+                   dftfe::uInt& wfc_block_size,
+                   dftfe::uInt& cheby_wfc_block_size,
                    bool& smeared_nuclear_charges,
                    bool& use_group_symmetry,
                    bool& use_time_reversal_symmetry,
@@ -290,6 +292,9 @@ void SocketDriver::parse_request(const std::string& json,
     orthogonalization_type = parse_string(json, "orthogonalization_type", "Auto");
     
     // New parameters parsing
+    wfc_block_size = parse_scalar<dftfe::uInt>(json, "wfc_block_size", 0);
+    cheby_wfc_block_size = parse_scalar<dftfe::uInt>(json, "cheby_wfc_block_size", 0);
+
     smeared_nuclear_charges = parse_scalar<bool>(json, "smeared_nuclear_charges", true);
     use_group_symmetry = parse_scalar<bool>(json, "use_group_symmetry", false);
     use_time_reversal_symmetry = parse_scalar<bool>(json, "use_time_reversal_symmetry", false);
@@ -405,6 +410,8 @@ void SocketDriver::run() {
         std::string cmd;
         
         // New parameters
+        dftfe::uInt wfc_block_size;
+        dftfe::uInt cheby_wfc_block_size;
         bool smeared_nuclear_charges;
         bool use_group_symmetry;
         bool use_time_reversal_symmetry;
@@ -418,6 +425,7 @@ void SocketDriver::run() {
                       mp_grid, mp_grid_shift, spin_polarized, start_magnetization,
                       fermi_temp, npkpt, mesh_size, scf_mixing, polynomial_order, tolerance, xc, 
                       atom_ball_radius, num_kohn_sham, orthogonalization_type,
+                      wfc_block_size, cheby_wfc_block_size,
                       smeared_nuclear_charges, use_group_symmetry, use_time_reversal_symmetry,
                       mixing_history, max_scf_iterations, dispersion_correction_type,
                       pseudopotential_calculation,
@@ -454,6 +462,8 @@ void SocketDriver::run() {
                        atom_ball_radius,
                        num_kohn_sham,
                        orthogonalization_type,
+                       wfc_block_size,
+                       cheby_wfc_block_size,
                        smeared_nuclear_charges,
                        use_group_symmetry,
                        use_time_reversal_symmetry,

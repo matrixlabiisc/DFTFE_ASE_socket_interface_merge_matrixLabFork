@@ -48,6 +48,8 @@ private:
                        dftfe::uInt& num_kohn_sham,
                        std::string& orthogonalization_type,
                        // New parameters
+                       dftfe::uInt& wfc_block_size,
+                       dftfe::uInt& cheby_wfc_block_size,
                        bool& smeared_nuclear_charges,
                        bool& use_group_symmetry,
                        bool& use_time_reversal_symmetry,

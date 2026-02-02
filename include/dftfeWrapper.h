@@ -224,6 +224,8 @@ namespace dftfe
            const dftfe::uInt              numKohnSham            = 0,
            const std::string              orthogonalizationType  = "Auto",
            // New parameters
+           const dftfe::uInt              wfcBlockSize           = 0,
+           const dftfe::uInt              chebyWfcBlockSize      = 0,
            const bool                     smearedNuclearCharges  = true,
            const bool                     useGroupSymmetry       = false,
            const bool                     useTimeReversalSymmetry = false,

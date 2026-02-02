@@ -343,6 +343,8 @@ namespace dftfe
     const dftfe::uInt                      numKohnSham,
     const std::string                      orthogonalizationType,
     // New parameters
+    const dftfe::uInt                      wfcBlockSize,
+    const dftfe::uInt                      chebyWfcBlockSize,
     const bool                             smearedNuclearCharges,
     const bool                             useGroupSymmetry,
     const bool                             useTimeReversalSymmetry,
@@ -764,6 +766,20 @@ namespace dftfe
                 cmd = "sed -i 's/set NUMBER OF KOHN-SHAM WAVEFUNCTIONS.*/set NUMBER OF KOHN-SHAM WAVEFUNCTIONS=" +
                       std::to_string(numKohnSham) + "/g' " + parameter_file_path;
                 system(cmd.c_str());
+            }
+
+            // Mehul: Added support for block size parameters
+            // Only write if > 0 (0 implies auto/default)
+            if (wfcBlockSize > 0) {
+                cmd = "sed -i 's/set WFC BLOCK SIZE.*/set WFC BLOCK SIZE=" + 
+                      std::to_string(wfcBlockSize) + "/g' " + parameter_file_path;
+                system(cmd.c_str());
+            }
+
+            if (chebyWfcBlockSize > 0) {
+                 cmd = "sed -i 's/set CHEBY WFC BLOCK SIZE.*/set CHEBY WFC BLOCK SIZE=" +
+                       std::to_string(chebyWfcBlockSize) + "/g' " + parameter_file_path;
+                 system(cmd.c_str());
             }
 
 
