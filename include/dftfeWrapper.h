@@ -217,6 +217,7 @@ namespace dftfe
            const dftfe::uInt              npkpt                  = 0,
            const double                   meshSize               = 0.8,
            const double                   scfMixingParameter     = 0.2,
+           const std::string              mixingScheme           = "Anderson",
            const dftfe::Int               polynomialOrder        = 7,
            const double                   tolerance              = 5e-6,
            const std::string              xc                     = "GGA-PBE",

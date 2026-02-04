@@ -60,6 +60,8 @@ subsection SCF parameters
   set MAXIMUM ITERATIONS=100
   subsection Eigen-solver parameters
     set NUMBER OF KOHN-SHAM WAVEFUNCTIONS=20
+    set CHEBY WFC BLOCK SIZE=20
+    set WFC BLOCK SIZE=20
   end
 end
 

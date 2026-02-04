@@ -235,6 +235,7 @@ namespace dftfe
            npkpt,
            meshSize,
            scfMixingParameter,
+           "Anderson", // Default mixingScheme
            polynomialOrder,
            tolerance,
            xc,
@@ -320,7 +321,7 @@ namespace dftfe
 
 
   void
-  // Mehul: Modified reinit to accept new parameters
+  // Mehul: Modified reinit to accept new parameters (ASE)
   dftfeWrapper::reinit(
     const MPI_Comm                        &mpi_comm_parent,
     const bool                             useDevice,
@@ -336,6 +337,7 @@ namespace dftfe
     const dftfe::uInt                      npkpt,
     const double                           meshSize,
     const double                           scfMixingParameter,
+    const std::string                      mixingScheme,
     const dftfe::Int                       polynomialOrder,
     const double                           tolerance,
     const std::string                      xc,
@@ -693,6 +695,19 @@ namespace dftfe
                   parameter_file_path;
             system(cmd.c_str());
 
+            cmd = "sed -i 's/set MIXING METHOD.*/set MIXING METHOD=" +
+                  mixingScheme + "/g' " +
+                  parameter_file_path;
+            system(cmd.c_str());
+
+            // Disable default forces and stress in prm file (controlled dynamically)
+            // Use [[:blank:]]* to allow optional spaces, and .* for value
+            cmd = "sed -i 's/set[[:blank:]]\\+ION[[:blank:]]\\+FORCE.*/set ION FORCE=false/g' " + parameter_file_path;
+            system(cmd.c_str());
+            
+            cmd = "sed -i 's/set[[:blank:]]\\+CELL[[:blank:]]\\+STRESS.*/set CELL STRESS=false/g' " + parameter_file_path;
+            system(cmd.c_str());
+
             const dftfe::Int totalIrreducibleKpt =
               mpGrid[0] * mpGrid[1] * mpGrid[2] / 2;
             const dftfe::Int npkptSet =
@@ -716,7 +731,7 @@ namespace dftfe
 
             int rank_debug; MPI_Comm_rank(d_mpi_comm_parent, &rank_debug);
             if (rank_debug==0) std::cout << "DEBUG: applying atomBallRadius=" << atomBallRadius << std::endl;
-            cmd = "sed -i 's/set ATOM BALL RADIUS.*/set ATOM BALL RADIUS=" +
+            cmd = "sed -i 's/set[[:blank:]]\\+ATOM[[:blank:]]\\+BALL[[:blank:]]\\+RADIUS.*/set ATOM BALL RADIUS=" +
                   std::to_string(atomBallRadius) + "/g' " + parameter_file_path;
             system(cmd.c_str());
 

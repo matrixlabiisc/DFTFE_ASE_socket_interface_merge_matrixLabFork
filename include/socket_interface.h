@@ -41,6 +41,7 @@ private:
                        dftfe::uInt& npkpt,
                        double& mesh_size,
                        double& scf_mixing,
+                       std::string& mixing_scheme, // New parameter
                        dftfe::Int& polynomial_order,
                        double& tolerance,
                        std::string& xc,
@@ -60,6 +61,7 @@ private:
                        dftfe::Int& verbosity,
                        bool& use_device,
                        bool& keep_scratch, // New parameter
+                       bool& compute_stress, // New parameter
                        std::string& cmd);
                        
     std::string format_response(double energy, 

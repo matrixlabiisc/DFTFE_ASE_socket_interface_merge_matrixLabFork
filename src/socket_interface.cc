@@ -239,6 +239,7 @@ void SocketDriver::parse_request(const std::string& json,
                    dftfe::uInt& npkpt,
                    double& mesh_size,
                    double& scf_mixing,
+                   std::string& mixing_scheme, // New parameter
                    dftfe::Int& polynomial_order,
                    double& tolerance,
                    std::string& xc,
@@ -258,6 +259,7 @@ void SocketDriver::parse_request(const std::string& json,
                    dftfe::Int& verbosity,
                    bool& use_device,
                    bool& keep_scratch, // New parameter
+                   bool& compute_stress, // New parameter
                    std::string& cmd) {
     // Simple parsing
     if (json.find("\"cmd\": \"exit\"") != std::string::npos || json == "EXIT") {
@@ -284,6 +286,7 @@ void SocketDriver::parse_request(const std::string& json,
     npkpt = parse_scalar<dftfe::uInt>(json, "npkpt", 0);
     mesh_size = parse_scalar<double>(json, "mesh_size", 1.2);
     scf_mixing = parse_scalar<double>(json, "scf_mixing", 0.5);
+    mixing_scheme = parse_string(json, "mixing_scheme", "Anderson");
     polynomial_order = parse_scalar<dftfe::Int>(json, "polynomial_order", 7);
     tolerance = parse_scalar<double>(json, "tolerance", 5e-6);
     xc = parse_string(json, "xc", "GGA-PBE");
@@ -308,6 +311,7 @@ void SocketDriver::parse_request(const std::string& json,
     
     verbosity = parse_scalar<dftfe::Int>(json, "verbosity", 1);
     use_device = parse_scalar<bool>(json, "use_device", false);
+    compute_stress = parse_scalar<bool>(json, "compute_stress", false);
 }
 
 std::string SocketDriver::format_response(double energy, 
@@ -399,6 +403,7 @@ void SocketDriver::run() {
         dftfe::uInt npkpt;
         double mesh_size;
         double scf_mixing;
+        std::string mixing_scheme;
         dftfe::Int polynomial_order;
         double tolerance;
         std::string xc;
@@ -420,10 +425,11 @@ void SocketDriver::run() {
         dftfe::Int dispersion_correction_type;
         bool pseudopotential_calculation;
         bool keep_scratch; // New variable
+        bool compute_stress; // New variable
         
         parse_request(json, new_coords, new_cell, numbers, pbc, 
                       mp_grid, mp_grid_shift, spin_polarized, start_magnetization,
-                      fermi_temp, npkpt, mesh_size, scf_mixing, polynomial_order, tolerance, xc, 
+                      fermi_temp, npkpt, mesh_size, scf_mixing, mixing_scheme, polynomial_order, tolerance, xc, 
                       atom_ball_radius, num_kohn_sham, orthogonalization_type,
                       wfc_block_size, cheby_wfc_block_size,
                       smeared_nuclear_charges, use_group_symmetry, use_time_reversal_symmetry,
@@ -431,6 +437,7 @@ void SocketDriver::run() {
                       pseudopotential_calculation,
                       verbosity, use_device,
                       keep_scratch,
+                      compute_stress,
                       cmd);
         
         if (cmd == "exit") {
@@ -456,6 +463,7 @@ void SocketDriver::run() {
                        npkpt,
                        mesh_size,
                        scf_mixing,
+                       mixing_scheme,
                        polynomial_order,
                        tolerance,
                        xc,
@@ -513,8 +521,8 @@ void SocketDriver::run() {
         }
         
         // Compute
-        if (rank == 0) std::cout << "SocketDriver: Computing free energy..." << std::endl;
-        auto result = dft.computeDFTFreeEnergy(true, true); // forces=true, stress=true
+        if (rank == 0) std::cout << "SocketDriver: Computing free energy... (Stress: " << (compute_stress ? "ON" : "OFF") << ")" << std::endl;
+        auto result = dft.computeDFTFreeEnergy(true, compute_stress); // forces=true, stress=dynamic
         if (rank == 0) std::cout << "SocketDriver: Computation complete." << std::endl;
         
         double energy = std::get<0>(result);
