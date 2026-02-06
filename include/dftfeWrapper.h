@@ -237,7 +237,9 @@ namespace dftfe
            
            const dftfe::Int               verbosity              = -1,
            const bool setDeviceToMPITaskBindingInternally        = false,
-           const bool                     keepScratch            = false); // New parameter
+           const bool                     keepScratch            = false, // New parameter
+           const bool                     computeIonForces       = true,  // New parameter
+           const bool                     computeStress          = false); // New parameter
 
     void
     clear();

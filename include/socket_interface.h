@@ -53,7 +53,7 @@ private:
                        dftfe::uInt& cheby_wfc_block_size,
                        bool& smeared_nuclear_charges,
                        bool& use_group_symmetry,
-                       bool& use_time_reversal_symmetry,
+                       bool& use_time_reversal_symmetry, // Mehul -> added time reversal symmetry 
                        dftfe::Int& mixing_history,
                        dftfe::Int& max_scf_iterations,
                        dftfe::Int& dispersion_correction_type,
@@ -61,6 +61,7 @@ private:
                        dftfe::Int& verbosity,
                        bool& use_device,
                        bool& keep_scratch, // New parameter
+                       bool& compute_forces, // New parameter: ION FORCE control
                        bool& compute_stress, // New parameter
                        std::string& cmd);
                        

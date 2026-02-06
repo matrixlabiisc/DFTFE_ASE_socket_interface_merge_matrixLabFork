@@ -356,7 +356,9 @@ namespace dftfe
     const bool                             pseudopotentialCalculation,
     const dftfe::Int                       verbosity,
     const bool                             setDeviceToMPITaskBindingInternally,
-    const bool                             keepScratch)
+    const bool                             keepScratch,
+    const bool                             computeIonForces,
+    const bool                             computeStress)
   {
     clear();
     if (mpi_comm_parent != MPI_COMM_NULL)
@@ -702,10 +704,12 @@ namespace dftfe
 
             // Disable default forces and stress in prm file (controlled dynamically)
             // Use [[:blank:]]* to allow optional spaces, and .* for value
-            cmd = "sed -i 's/set[[:blank:]]\\+ION[[:blank:]]\\+FORCE.*/set ION FORCE=false/g' " + parameter_file_path;
+            const std::string ionForce = computeIonForces ? "true" : "false";
+            cmd = "sed -i 's/set[[:blank:]]\\+ION[[:blank:]]\\+FORCE.*/set ION FORCE=" + ionForce + "/g' " + parameter_file_path;
             system(cmd.c_str());
             
-            cmd = "sed -i 's/set[[:blank:]]\\+CELL[[:blank:]]\\+STRESS.*/set CELL STRESS=false/g' " + parameter_file_path;
+            const std::string cellStress = computeStress ? "true" : "false";
+            cmd = "sed -i 's/set[[:blank:]]\\+CELL[[:blank:]]\\+STRESS.*/set CELL STRESS=" + cellStress + "/g' " + parameter_file_path;
             system(cmd.c_str());
 
             const dftfe::Int totalIrreducibleKpt =

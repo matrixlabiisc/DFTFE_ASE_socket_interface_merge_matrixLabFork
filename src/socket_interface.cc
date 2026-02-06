@@ -259,6 +259,7 @@ void SocketDriver::parse_request(const std::string& json,
                    dftfe::Int& verbosity,
                    bool& use_device,
                    bool& keep_scratch, // New parameter
+                   bool& compute_forces, // New parameter
                    bool& compute_stress, // New parameter
                    std::string& cmd) {
     // Simple parsing
@@ -311,6 +312,7 @@ void SocketDriver::parse_request(const std::string& json,
     
     verbosity = parse_scalar<dftfe::Int>(json, "verbosity", 1);
     use_device = parse_scalar<bool>(json, "use_device", false);
+    compute_forces = parse_scalar<bool>(json, "compute_forces", true); // Default True
     compute_stress = parse_scalar<bool>(json, "compute_stress", false);
 }
 
@@ -425,6 +427,7 @@ void SocketDriver::run() {
         dftfe::Int dispersion_correction_type;
         bool pseudopotential_calculation;
         bool keep_scratch; // New variable
+        bool compute_forces; // New variable
         bool compute_stress; // New variable
         
         parse_request(json, new_coords, new_cell, numbers, pbc, 
@@ -437,6 +440,7 @@ void SocketDriver::run() {
                       pseudopotential_calculation,
                       verbosity, use_device,
                       keep_scratch,
+                      compute_forces, // Pass new param
                       compute_stress,
                       cmd);
         
@@ -481,7 +485,9 @@ void SocketDriver::run() {
                        pseudopotential_calculation,
                        verbosity,
                        false, // setDeviceToMPITaskBindingInternally
-                       keep_scratch); // keepScratch
+                       keep_scratch, // keepScratch
+                       compute_forces, 
+                       compute_stress);
                        
             initialized = true;
             if (rank == 0) std::cout << "SocketDriver: dftfeWrapper initialized." << std::endl;
@@ -521,8 +527,8 @@ void SocketDriver::run() {
         }
         
         // Compute
-        if (rank == 0) std::cout << "SocketDriver: Computing free energy... (Stress: " << (compute_stress ? "ON" : "OFF") << ")" << std::endl;
-        auto result = dft.computeDFTFreeEnergy(true, compute_stress); // forces=true, stress=dynamic
+        if (rank == 0) std::cout << "SocketDriver: Computing free energy... (Forces: " << (compute_forces ? "ON" : "OFF") << ", Stress: " << (compute_stress ? "ON" : "OFF") << ")" << std::endl;
+        auto result = dft.computeDFTFreeEnergy(compute_forces, compute_stress);
         if (rank == 0) std::cout << "SocketDriver: Computation complete." << std::endl;
         
         double energy = std::get<0>(result);
