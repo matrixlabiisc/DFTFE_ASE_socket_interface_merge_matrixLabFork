@@ -21,10 +21,20 @@
 #include <complex>
 #include <cuComplex.h>
 #include <TypeConfig.h>
+#include <cuda_bf16.h>
+#include <cstring>
 namespace dftfe
 {
   namespace utils
   {
+
+    template <typename T1, typename T2>
+    __device__ inline void
+    atomicAddWrapper(T1 *addr, T2 value)
+    {
+      atomicAdd(addr, value);
+    }
+
     __forceinline__ __device__ cuDoubleComplex
     makeComplex(double realPart, double imagPart)
     {
@@ -300,7 +310,6 @@ namespace dftfe
     {
       return cuCmulf(a, b);
     }
-
 
     //
     // mult for complex heterogeneous types e.g. (cuDoubleComplex,

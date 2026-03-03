@@ -26,7 +26,6 @@
 #include <dftUtils.h>
 #include <energyCalculator.h>
 #include <fileReaders.h>
-#include <force.h>
 #include <linalg.h>
 #include <linearAlgebraOperations.h>
 #include <linearAlgebraOperationsInternal.h>
@@ -35,7 +34,6 @@
 #include <poissonSolverProblem.h>
 #include <pseudoConverter.h>
 #include <pseudoUtils.h>
-#include <symmetry.h>
 #include <vectorUtilities.h>
 #include <MemoryTransfer.h>
 #include <QuadDataCompositeWrite.h>
@@ -46,10 +44,6 @@
 #include <algorithm>
 #include <cmath>
 #include <complex>
-// #include <stdafx.h>
-#include <boost/math/distributions/normal.hpp>
-#include <boost/math/special_functions/spherical_harmonic.hpp>
-#include <boost/random/normal_distribution.hpp>
 
 #include <spglib.h>
 #include <stdafx.h>
@@ -177,6 +171,8 @@ namespace dftfe
   {
     d_nOMPThreads = 1;
     d_useHubbard  = false;
+    MPI_Barrier(d_mpiCommParent);
+    d_dftfeClassStartTime = MPI_Wtime();
 #ifdef _OPENMP
     if (const char *penv = std::getenv("DFTFE_NUM_THREADS"))
       {
@@ -208,14 +204,11 @@ namespace dftfe
 
     d_elpaScala = new dftfe::elpaScalaManager(mpi_comm_domain);
 
-    forcePtr    = new forceClass<memorySpace>(this,
-                                           mpi_comm_parent,
+    groupSymmetryPtr =
+      std::make_shared<groupSymmetryClass>(mpi_comm_parent,
                                            mpi_comm_domain,
-                                           dftParams);
-    symmetryPtr = new symmetryClass<memorySpace>(this,
-                                                 mpi_comm_parent,
-                                                 mpi_comm_domain,
-                                                 _interpoolcomm);
+                                           d_dftParamsPtr->useSymm,
+                                           d_dftParamsPtr->timeReversal);
 
     d_excManagerPtr = std::make_shared<excManager<memorySpace>>();
     d_isRestartGroundStateCalcFromChk = false;
@@ -281,9 +274,7 @@ namespace dftfe
   dftClass<memorySpace>::~dftClass()
   {
     finalizeKohnShamDFTOperator();
-    delete symmetryPtr;
     matrix_free_data.clear();
-    delete forcePtr;
 #if defined(DFTFE_WITH_DEVICE)
     delete d_devicecclMpiCommDomainPtr;
 #endif
@@ -374,6 +365,36 @@ namespace dftfe
   void
   dftClass<memorySpace>::set()
   {
+    MPI_Barrier(d_mpiCommParent);
+    double startTimeLocal = MPI_Wtime();
+    d_BLASWrapperPtrHost  = std::make_shared<
+      dftfe::linearAlgebra::BLASWrapper<dftfe::utils::MemorySpace::HOST>>();
+    d_basisOperationsPtrHost = std::make_shared<
+      dftfe::basis::FEBasisOperations<dataTypes::number,
+                                      double,
+                                      dftfe::utils::MemorySpace::HOST>>(
+      d_BLASWrapperPtrHost);
+    d_basisOperationsPtrElectroHost = std::make_shared<
+      dftfe::basis::
+        FEBasisOperations<double, double, dftfe::utils::MemorySpace::HOST>>(
+      d_BLASWrapperPtrHost);
+#if defined(DFTFE_WITH_DEVICE)
+    if (d_dftParamsPtr->useDevice)
+      {
+        d_BLASWrapperPtr = std::make_shared<dftfe::linearAlgebra::BLASWrapper<
+          dftfe::utils::MemorySpace::DEVICE>>();
+        d_basisOperationsPtrDevice = std::make_shared<
+          dftfe::basis::FEBasisOperations<dataTypes::number,
+                                          double,
+                                          dftfe::utils::MemorySpace::DEVICE>>(
+          d_BLASWrapperPtr);
+        d_basisOperationsPtrElectroDevice = std::make_shared<
+          dftfe::basis::FEBasisOperations<double,
+                                          double,
+                                          dftfe::utils::MemorySpace::DEVICE>>(
+          d_BLASWrapperPtr);
+      }
+#endif
     computingTimerStandard.enter_subsection("Atomic system initialization");
 
     d_numEigenValues = d_dftParamsPtr->numberEigenValues;
@@ -828,6 +849,13 @@ namespace dftfe
         "DFT-FE Error: Incorrect input value used- CORE EIGENSTATES should be less than the total number of wavefunctions."));
 
 #ifdef USE_COMPLEX
+    std::vector<bool> periodicBc = {d_dftParamsPtr->periodicX,
+                                    d_dftParamsPtr->periodicY,
+                                    d_dftParamsPtr->periodicZ};
+    groupSymmetryPtr->initGroupSymmetry(atomLocationsFractional,
+                                        d_domainBoundingVectors,
+                                        periodicBc,
+                                        d_dftParamsPtr->spinPolarized == 1);
     if (d_dftParamsPtr->solverMode == "BANDS")
       readkPointData();
     else
@@ -918,6 +946,16 @@ namespace dftfe
 
     d_elpaScala->processGridELPASetup(d_numEigenValues, *d_dftParamsPtr);
     MPI_Barrier(d_mpiCommParent);
+    double cuttentTime = MPI_Wtime();
+    if (d_dftParamsPtr->verbosity >= 3 && !d_dftParamsPtr->reproducible_output)
+      {
+        pcout << "DFT-FE Timer: Time taken for setting up atomic system: "
+              << cuttentTime - startTimeLocal << " seconds" << std::endl;
+        pcout
+          << "DFT-FE Timer: Total Time taken till setting up atomic system: "
+          << cuttentTime - d_dftfeClassStartTime << " seconds" << std::endl;
+      }
+
     computingTimerStandard.leave_subsection("Atomic system initialization");
   }
 
@@ -945,12 +983,11 @@ namespace dftfe
           pcout
             << "initPseudoPotentialAll: Time taken for initializing core density for non-linear core correction: "
             << init_core << std::endl;
-        determineAtomsOfInterstPseudopotential(atomLocations);
+        d_oncvClassPtr->determineAtomsOfInterstPseudopotential(atomLocations);
         MPI_Barrier(d_mpiCommParent);
         if (d_dftParamsPtr->isPseudopotential == true)
           {
             d_oncvClassPtr->initialiseNonLocalContribution(
-              d_atomLocationsInterestPseudopotential,
               d_imageIdsTrunc,
               d_imagePositionsTrunc,
               d_kPointWeights,     // accounts for interpool
@@ -962,13 +999,13 @@ namespace dftfe
             if (d_dftParamsPtr->writePdosFile)
               {
                 d_atomCenteredOrbitalsPostProcessingPtr
-                  ->initialiseNonLocalContribution(
-                    d_atomLocationsInterestPseudopotential,
-                    d_imageIdsTrunc,
-                    d_imagePositionsTrunc,
-                    d_kPointWeights,
-                    d_kPointCoordinates,
-                    updateNonlocalSparsity);
+                  ->determineAtomsOfInterstPostProcessing(atomLocations);
+                d_atomCenteredOrbitalsPostProcessingPtr
+                  ->initialiseNonLocalContribution(d_imageIdsTrunc,
+                                                   d_imagePositionsTrunc,
+                                                   d_kPointWeights,
+                                                   d_kPointCoordinates,
+                                                   updateNonlocalSparsity);
               }
           }
       }
@@ -1118,70 +1155,21 @@ namespace dftfe
   dftClass<memorySpace>::init()
   {
     computingTimerStandard.enter_subsection("KSDFT problem initialization");
-
-    d_BLASWrapperPtrHost = std::make_shared<
-      dftfe::linearAlgebra::BLASWrapper<dftfe::utils::MemorySpace::HOST>>();
-    d_basisOperationsPtrHost = std::make_shared<
-      dftfe::basis::FEBasisOperations<dataTypes::number,
-                                      double,
-                                      dftfe::utils::MemorySpace::HOST>>(
-      d_BLASWrapperPtrHost);
-    d_basisOperationsPtrElectroHost = std::make_shared<
-      dftfe::basis::
-        FEBasisOperations<double, double, dftfe::utils::MemorySpace::HOST>>(
-      d_BLASWrapperPtrHost);
-#if defined(DFTFE_WITH_DEVICE)
-    if (d_dftParamsPtr->useDevice)
-      {
-        d_BLASWrapperPtr = std::make_shared<dftfe::linearAlgebra::BLASWrapper<
-          dftfe::utils::MemorySpace::DEVICE>>();
-        d_basisOperationsPtrDevice = std::make_shared<
-          dftfe::basis::FEBasisOperations<dataTypes::number,
-                                          double,
-                                          dftfe::utils::MemorySpace::DEVICE>>(
-          d_BLASWrapperPtr);
-        d_basisOperationsPtrElectroDevice = std::make_shared<
-          dftfe::basis::FEBasisOperations<double,
-                                          double,
-                                          dftfe::utils::MemorySpace::DEVICE>>(
-          d_BLASWrapperPtr);
-      }
-#endif
+    MPI_Barrier(d_mpiCommParent);
+    double startTimeLocal = MPI_Wtime();
     initImageChargesUpdateKPoints();
 
     calculateNearestAtomDistances();
 
     computing_timer.enter_subsection("mesh generation");
-    //
-    // generate mesh (both parallel and serial)
-    // while parallel meshes are always generated, serial meshes are only
-    // generated for following three cases: symmetrization is on, ionic
-    // optimization is on as well as reuse wfcs and density from previous ionic
-    // step is on, or if serial constraints generation is on.
-    //
-    // if (d_dftParamsPtr->loadRhoData)
-    //   {
-    //     d_mesh.generateCoarseMeshesForRestart(
-    //       atomLocations,
-    //       d_imagePositionsTrunc,
-    //       d_imageIdsTrunc,
-    //       d_nearestAtomDistances,
-    //       d_domainBoundingVectors,
-    //       d_dftParamsPtr->useSymm ||
-    //         d_dftParamsPtr->createConstraintsFromSerialDofhandler);
 
-    //     loadTriaInfoAndRhoNodalData();
-    //   }
-    // else
-    //{
     d_mesh.generateSerialUnmovedAndParallelMovedUnmovedMesh(
       atomLocations,
       d_imagePositionsTrunc,
       d_imageIdsTrunc,
       d_nearestAtomDistances,
       d_domainBoundingVectors,
-      d_dftParamsPtr->useSymm ||
-        d_dftParamsPtr->createConstraintsFromSerialDofhandler);
+      d_dftParamsPtr->createConstraintsFromSerialDofhandler);
     //}
     computing_timer.leave_subsection("mesh generation");
 
@@ -1199,14 +1187,38 @@ namespace dftfe
     // constraints on the unmoved Mesh
     //
     initUnmovedTriangulation(triangulationPar);
+    if ((d_dftParamsPtr->isIonForce || d_dftParamsPtr->isCellStress))
+      {
+#ifdef DFTFE_WITH_DEVICE
+        if constexpr (memorySpace == dftfe::utils::MemorySpace::DEVICE)
+          d_configForcePtr = std::make_shared<
+            configurationalForceClass<dftfe::utils::MemorySpace::DEVICE>>(
+            d_BLASWrapperPtr,
+            d_BLASWrapperPtrHost,
+            d_mpiCommParent,
+            mpi_communicator,
+            interpoolcomm,
+            interBandGroupComm,
+            *d_dftParamsPtr);
+        else
+#endif
+          d_configForcePtr = std::make_shared<
+            configurationalForceClass<dftfe::utils::MemorySpace::HOST>>(
+            d_BLASWrapperPtrHost,
+            d_BLASWrapperPtrHost,
+            d_mpiCommParent,
+            mpi_communicator,
+            interpoolcomm,
+            interBandGroupComm,
+            *d_dftParamsPtr);
+        d_configForcePtr->setUnmovedTriangulation(triangulationPar,
+                                                  d_mesh.getSerialMeshUnmoved(),
+                                                  d_domainBoundingVectors);
+      }
 
     if (d_dftParamsPtr->verbosity >= 4)
       dftUtils::printCurrentMemoryUsage(mpi_communicator,
                                         "initUnmovedTriangulation completed");
-#ifdef USE_COMPLEX
-    if (d_dftParamsPtr->useSymm)
-      symmetryPtr->initSymmetry();
-#endif
 
 
 
@@ -1233,9 +1245,30 @@ namespace dftfe
       dftUtils::printCurrentMemoryUsage(mpi_communicator,
                                         "initBoundaryConditions completed");
 
+#ifdef USE_COMPLEX
+    if (d_dftParamsPtr->useSymm)
+      {
+        groupSymmetryPtr->reinitGroupSymmetry(atomLocationsFractional,
+                                              d_domainBoundingVectors);
+        groupSymmetryPtr->setupCommPatternForNodalField(d_dofHandlerRhoNodal);
+      }
+#endif
+    MPI_Barrier(d_mpiCommParent);
+    double cuttentTime = MPI_Wtime();
+    if (d_dftParamsPtr->verbosity >= 3 && !d_dftParamsPtr->reproducible_output)
+      {
+        pcout
+          << "DFT-FE Timer: Time taken for initialization of Mesh and Boundary Conditions: "
+          << cuttentTime - startTimeLocal << " seconds" << std::endl;
+        pcout
+          << "DFT-FE Timer: Total Time taken till initialization of Mesh and Boundary Conditions: "
+          << cuttentTime - d_dftfeClassStartTime << " seconds" << std::endl;
+      }
     //
     // initialize pseudopotential data for both local and nonlocal part
     //
+    MPI_Barrier(d_mpiCommParent);
+    startTimeLocal = MPI_Wtime();
     if (d_dftParamsPtr->isPseudopotential == true)
       d_oncvClassPtr->initialise(d_basisOperationsPtrHost,
 #if defined(DFTFE_WITH_DEVICE)
@@ -1254,8 +1287,9 @@ namespace dftfe
                                  atomLocations,
                                  d_numEigenValues,
                                  d_dftParamsPtr->useSinglePrecCheby,
-                                 (d_dftParamsPtr->isIonForce) ||
-                                   d_dftParamsPtr->isCellStress);
+                                 d_dftParamsPtr->floatingNuclearCharges,
+                                 d_dftParamsPtr->isIonForce,
+                                 d_dftParamsPtr->isCellStress);
 
     if (d_dftParamsPtr->solverMode == "NSCF")
       {
@@ -1411,6 +1445,47 @@ namespace dftfe
     d_netFloatingDispSinceLastCheckForSmearedChargeOverlaps.resize(
       atomLocations.size() * 3, 0.0);
 
+    if ((d_dftParamsPtr->isIonForce || d_dftParamsPtr->isCellStress))
+      {
+#ifdef DFTFE_WITH_DEVICE
+        if constexpr (memorySpace == dftfe::utils::MemorySpace::DEVICE)
+          d_configForcePtr->initialize(d_basisOperationsPtrDevice,
+                                       d_basisOperationsPtrHost,
+                                       d_basisOperationsPtrElectroDevice,
+                                       d_basisOperationsPtrElectroHost,
+                                       d_oncvClassPtr,
+                                       d_excManagerPtr,
+                                       d_densityQuadratureId,
+                                       d_densityQuadratureIdElectro,
+                                       d_lpspQuadratureId,
+                                       d_lpspQuadratureIdElectro,
+                                       d_nlpspQuadratureId,
+                                       d_smearedChargeQuadratureIdElectro);
+        else
+#endif
+          d_configForcePtr->initialize(d_basisOperationsPtrHost,
+                                       d_basisOperationsPtrHost,
+                                       d_basisOperationsPtrElectroHost,
+                                       d_basisOperationsPtrElectroHost,
+                                       d_oncvClassPtr,
+                                       d_excManagerPtr,
+                                       d_densityQuadratureId,
+                                       d_densityQuadratureIdElectro,
+                                       d_lpspQuadratureId,
+                                       d_lpspQuadratureIdElectro,
+                                       d_nlpspQuadratureId,
+                                       d_smearedChargeQuadratureIdElectro);
+      }
+    MPI_Barrier(d_mpiCommParent);
+    cuttentTime = MPI_Wtime();
+    if (d_dftParamsPtr->verbosity >= 3 && !d_dftParamsPtr->reproducible_output)
+      {
+        pcout << "DFT-FE Timer: Time taken for PseudoPotential Initialisation: "
+              << cuttentTime - startTimeLocal << " seconds" << std::endl;
+        pcout
+          << "DFT-FE Timer: Total Time taken till PseudoPotential Initialisation: "
+          << cuttentTime - d_dftfeClassStartTime << " seconds" << std::endl;
+      }
     computingTimerStandard.leave_subsection("KSDFT problem initialization");
   }
 
@@ -1529,6 +1604,14 @@ namespace dftfe
     d_smearedChargeMomentsComputed = false;
     MPI_Barrier(d_mpiCommParent);
     init_bc = MPI_Wtime() - init_bc;
+#ifdef USE_COMPLEX
+    if (d_dftParamsPtr->useSymm)
+      {
+        groupSymmetryPtr->reinitGroupSymmetry(atomLocationsFractional,
+                                              d_domainBoundingVectors);
+        groupSymmetryPtr->setupCommPatternForNodalField(d_dofHandlerRhoNodal);
+      }
+#endif
     if (d_dftParamsPtr->verbosity >= 2)
       pcout
         << "updateAtomPositionsAndMoveMesh: Time taken for initBoundaryConditions: "
@@ -1869,115 +1952,12 @@ namespace dftfe
 
 
   //
-  // generate a-posteriori mesh
-  //
-  template <dftfe::utils::MemorySpace memorySpace>
-  void
-  dftClass<memorySpace>::aposterioriMeshGenerate()
-  {
-    //
-    // get access to triangulation objects from meshGenerator class
-    //
-    dealii::parallel::distributed::Triangulation<3> &triangulationPar =
-      d_mesh.getParallelMeshMoved();
-    dftfe::uInt numberLevelRefinements = d_dftParamsPtr->numLevels;
-    dftfe::uInt numberWaveFunctionsErrorEstimate =
-      d_dftParamsPtr->numberWaveFunctionsForEstimate;
-    bool        refineFlag = true;
-    dftfe::uInt countLevel = 0;
-    double      traceXtKX  = computeTraceXtKX(numberWaveFunctionsErrorEstimate);
-    double      traceXtKXPrev = traceXtKX;
-
-    while (refineFlag)
-      {
-        if (numberLevelRefinements > 0)
-          {
-            distributedCPUVec<double> tempVec;
-            matrix_free_data.initialize_dof_vector(tempVec);
-
-            std::vector<distributedCPUVec<double>> eigenVectorsArray(
-              numberWaveFunctionsErrorEstimate);
-
-            for (dftfe::uInt i = 0; i < numberWaveFunctionsErrorEstimate; ++i)
-              eigenVectorsArray[i].reinit(tempVec);
-
-
-            vectorTools::copyFlattenedSTLVecToSingleCompVec(
-              d_eigenVectorsFlattenedHost.data(),
-              d_numEigenValues,
-              matrix_free_data.get_vector_partitioner()->locally_owned_size(),
-              std::make_pair(0, numberWaveFunctionsErrorEstimate),
-              eigenVectorsArray);
-
-
-            for (dftfe::uInt i = 0; i < numberWaveFunctionsErrorEstimate; ++i)
-              {
-                constraintsNone.distribute(eigenVectorsArray[i]);
-                eigenVectorsArray[i].update_ghost_values();
-              }
-
-
-            d_mesh.generateAutomaticMeshApriori(
-              dofHandler,
-              triangulationPar,
-              eigenVectorsArray,
-              d_dftParamsPtr->finiteElementPolynomialOrder);
-          }
-
-
-        //
-        // initialize dofHandlers of refined mesh and move triangulation
-        //
-        initUnmovedTriangulation(triangulationPar);
-        moveMeshToAtoms(triangulationPar, d_mesh.getSerialMeshUnmoved());
-        initBoundaryConditions();
-        d_smearedChargeMomentsComputed = false;
-        initElectronicFields();
-        initPseudoPotentialAll();
-
-        //
-        // compute Tr(XtHX) for each level of mesh
-        //
-        // dataTypes::number traceXtHX =
-        // computeTraceXtHX(numberWaveFunctionsErrorEstimate); pcout<<" Tr(XtHX)
-        // value for Level: "<<countLevel<<" "<<traceXtHX<<std::endl;
-
-        //
-        // compute Tr(XtKX) for each level of mesh
-        //
-        traceXtKX = computeTraceXtKX(numberWaveFunctionsErrorEstimate);
-        if (d_dftParamsPtr->verbosity > 0)
-          pcout << " Tr(XtKX) value for Level: " << countLevel << " "
-                << traceXtKX << std::endl;
-
-        // compute change in traceXtKX
-        double deltaKinetic =
-          std::abs(traceXtKX - traceXtKXPrev) / atomLocations.size();
-
-        // reset traceXtkXPrev to traceXtKX
-        traceXtKXPrev = traceXtKX;
-
-        //
-        // set refineFlag
-        //
-        countLevel += 1;
-        if (countLevel >= numberLevelRefinements ||
-            deltaKinetic <= d_dftParamsPtr->toleranceKinetic)
-          refineFlag = false;
-      }
-  }
-
-
-  //
   // dft run
   //
   template <dftfe::utils::MemorySpace memorySpace>
   void
   dftClass<memorySpace>::run()
   {
-    if (d_dftParamsPtr->meshAdaption)
-      aposterioriMeshGenerate();
-
     if (d_dftParamsPtr->restartFolder != "." &&
         (d_dftParamsPtr->saveQuadData) &&
         dealii::Utilities::MPI::this_mpi_process(d_mpiCommParent) == 0)
@@ -2050,9 +2030,7 @@ namespace dftfe
 
     if (d_dftParamsPtr->printKE)
       {
-        dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>
-          kineticEnergyDensityValues;
-        computeAndPrintKE(kineticEnergyDensityValues);
+        computeAndPrintKE(d_tauOutQuadValues[0]);
       }
 
 
@@ -2309,7 +2287,8 @@ namespace dftfe
                 (d_dftParamsPtr->restaFermiWavevector / 4.0 / M_PI / 4.0 /
                  M_PI),
               d_densityDofHandlerIndexElectro,
-              d_densityQuadratureIdElectro);
+              d_densityQuadratureIdElectro,
+              d_kerkerAXQuadratureIdElectro);
 #endif
           }
         else
@@ -2321,7 +2300,8 @@ namespace dftfe
               d_dftParamsPtr->kerkerParameter :
               (d_dftParamsPtr->restaFermiWavevector / 4.0 / M_PI / 4.0 / M_PI),
             d_densityDofHandlerIndexElectro,
-            d_densityQuadratureIdElectro);
+            d_densityQuadratureIdElectro,
+            d_kerkerAXQuadratureIdElectro);
       }
 
     // FIXME: Check if this call can be removed
@@ -2423,7 +2403,13 @@ namespace dftfe
         kohnShamDFTEigenOperator.computeVEffExternalPotCorr(d_pseudoVLoc);
         computingTimerStandard.leave_subsection("Init local PSP");
       }
-
+    MPI_Barrier(d_mpiCommParent);
+    double currentTime = MPI_Wtime();
+    if (d_dftParamsPtr->verbosity >= 3 && !d_dftParamsPtr->reproducible_output)
+      {
+        pcout << "DFT-FE Timer: Total Time taken till Start of SCF Iteration: "
+              << currentTime - d_dftfeClassStartTime << " seconds" << std::endl;
+      }
 
     computingTimerStandard.enter_subsection("Total scf solve");
 
@@ -2461,7 +2447,8 @@ namespace dftfe
     // Have to be called once for each variable
     // initialise the variables in the mixing scheme
     if (d_dftParamsPtr->mixingMethod == "ANDERSON_WITH_KERKER" ||
-        d_dftParamsPtr->mixingMethod == "ANDERSON_WITH_RESTA")
+        d_dftParamsPtr->mixingMethod == "ANDERSON_WITH_RESTA" ||
+        d_dftParamsPtr->useSymm)
       {
         dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>
           rhoNodalMassVec;
@@ -2480,6 +2467,27 @@ namespace dftfe
             d_dftParamsPtr->mixingParameter *
               d_dftParamsPtr->spinMixingEnhancementFactor,
             d_dftParamsPtr->adaptAndersonMixingParameter);
+
+        if (isTauMGGA)
+          {
+            d_basisOperationsPtrElectroHost->reinit(
+              0, 0, d_densityQuadratureIdElectro, false);
+            d_mixingScheme.addMixingVariable(
+              mixingVariable::tau,
+              d_basisOperationsPtrElectroHost->JxWBasisData(),
+              true,
+              d_dftParamsPtr->mixingParameter,
+              d_dftParamsPtr->adaptAndersonMixingParameter);
+            if (d_dftParamsPtr->spinPolarized == 1)
+              {
+                d_mixingScheme.addMixingVariable(
+                  mixingVariable::tauMagZ,
+                  d_basisOperationsPtrElectroHost->JxWBasisData(),
+                  true,
+                  d_dftParamsPtr->mixingParameter,
+                  d_dftParamsPtr->adaptAndersonMixingParameter);
+              }
+          }
       }
     else if (d_dftParamsPtr->mixingMethod == "ANDERSON")
       {
@@ -2608,10 +2616,13 @@ namespace dftfe
                         << norm << std::endl;
               }
             else if (d_dftParamsPtr->mixingMethod == "ANDERSON_WITH_KERKER" ||
-                     d_dftParamsPtr->mixingMethod == "ANDERSON_WITH_RESTA")
+                     d_dftParamsPtr->mixingMethod == "ANDERSON_WITH_RESTA" ||
+                     d_dftParamsPtr->useSymm)
               {
                 // Fill in New Kerker framework here
                 std::vector<double> norms(
+                  d_dftParamsPtr->spinPolarized == 1 ? 2 : 1);
+                std::vector<double> normsTau(
                   d_dftParamsPtr->spinPolarized == 1 ? 2 : 1);
                 if (scfIter == 1)
                   d_densityResidualNodalValues.resize(
@@ -2638,6 +2649,44 @@ namespace dftfe
                       d_densityResidualNodalValues[iComp].begin(),
                       d_densityResidualNodalValues[iComp].locally_owned_size());
                   }
+
+                if (isTauMGGA)
+                  {
+                    if (scfIter == 1)
+                      {
+                        d_tauResidualQuadValues.resize(
+                          d_tauOutQuadValues.size());
+                      }
+
+                    for (dftfe::uInt iComp = 0;
+                         iComp < d_tauOutQuadValues.size();
+                         iComp++)
+                      {
+                        if (scfIter == 1)
+                          d_tauResidualQuadValues[iComp].resize(
+                            d_tauOutQuadValues[iComp].size());
+                        d_basisOperationsPtrElectroHost->reinit(
+                          0, 0, d_densityQuadratureIdElectro, false);
+
+                        normsTau[iComp] = computeResidualQuadData(
+                          d_tauOutQuadValues[iComp],
+                          d_tauInQuadValues[iComp],
+                          d_tauResidualQuadValues[iComp],
+                          d_basisOperationsPtrElectroHost->JxWBasisData(),
+                          true);
+                        d_mixingScheme.addVariableToInHist(
+                          iComp == 0 ? mixingVariable::tau :
+                                       mixingVariable::tauMagZ,
+                          d_tauInQuadValues[iComp].data(),
+                          d_tauInQuadValues[iComp].size());
+                        d_mixingScheme.addVariableToResidualHist(
+                          iComp == 0 ? mixingVariable::tau :
+                                       mixingVariable::tauMagZ,
+                          d_tauResidualQuadValues[iComp].data(),
+                          d_tauResidualQuadValues[iComp].size());
+                      }
+                  }
+
                 // Delete old history if it exceeds a pre-described
                 // length
                 d_mixingScheme.popOldHistory(d_dftParamsPtr->mixingHistory);
@@ -2645,44 +2694,96 @@ namespace dftfe
                 // Compute the mixing coefficients
                 d_mixingScheme.computeAndersonMixingCoeff(
                   d_dftParamsPtr->spinPolarized == 1 ?
-                    std::vector<mixingVariable>{mixingVariable::rho,
-                                                mixingVariable::magZ} :
-                    std::vector<mixingVariable>{mixingVariable::rho});
+                    (isTauMGGA ?
+                       std::vector<mixingVariable>{mixingVariable::rho,
+                                                   mixingVariable::tau,
+                                                   mixingVariable::magZ,
+                                                   mixingVariable::tauMagZ} :
+                       std::vector<mixingVariable>{mixingVariable::rho,
+                                                   mixingVariable::magZ}) :
+                    (isTauMGGA ?
+                       std::vector<mixingVariable>{mixingVariable::rho,
+                                                   mixingVariable::tau} :
+                       std::vector<mixingVariable>{mixingVariable::rho}));
                 d_mixingScheme.getOptimizedResidual(
                   mixingVariable::rho,
                   d_densityResidualNodalValues[0].begin(),
                   d_densityResidualNodalValues[0].locally_owned_size());
-                applyKerkerPreconditionerToTotalDensityResidual(
+
+                if (d_dftParamsPtr->mixingMethod == "ANDERSON_WITH_KERKER" ||
+                    d_dftParamsPtr->mixingMethod == "ANDERSON_WITH_RESTA")
+                  {
+                    applyKerkerPreconditionerToTotalDensityResidual(
 #ifdef DFTFE_WITH_DEVICE
-                  kerkerPreconditionedResidualSolverProblemDevice,
-                  CGSolverDevice,
+                      kerkerPreconditionedResidualSolverProblemDevice,
+                      CGSolverDevice,
 #endif
-                  kerkerPreconditionedResidualSolverProblem,
-                  CGSolver,
-                  d_densityResidualNodalValues[0],
-                  d_preCondTotalDensityResidualVector);
-                d_mixingScheme.mixPreconditionedResidual(
-                  mixingVariable::rho,
-                  d_preCondTotalDensityResidualVector.begin(),
-                  d_densityInNodalValues[0].begin(),
-                  d_densityInNodalValues[0].locally_owned_size());
+                      kerkerPreconditionedResidualSolverProblem,
+                      CGSolver,
+                      d_densityResidualNodalValues[0],
+                      d_preCondTotalDensityResidualVector);
+
+                    d_mixingScheme.mixPreconditionedResidual(
+                      mixingVariable::rho,
+                      d_preCondTotalDensityResidualVector.begin(),
+                      d_densityInNodalValues[0].begin(),
+                      d_densityInNodalValues[0].locally_owned_size());
+                  }
+                else
+                  {
+                    d_mixingScheme.mixVariable(
+                      mixingVariable::rho,
+                      d_densityInNodalValues[0].begin(),
+                      d_densityInNodalValues[0].locally_owned_size());
+                  }
+
                 for (dftfe::uInt iComp = 1; iComp < norms.size(); ++iComp)
-                  d_mixingScheme.mixVariable(
-                    iComp == 0 ? mixingVariable::rho : mixingVariable::magZ,
-                    d_densityInNodalValues[iComp].begin(),
-                    d_densityInNodalValues[iComp].locally_owned_size());
+                  {
+                    d_mixingScheme.mixVariable(
+                      iComp == 0 ? mixingVariable::rho : mixingVariable::magZ,
+                      d_densityInNodalValues[iComp].begin(),
+                      d_densityInNodalValues[iComp].locally_owned_size());
+                  }
+                if (isTauMGGA)
+                  {
+                    for (dftfe::uInt iComp = 0; iComp < norms.size(); ++iComp)
+                      {
+                        d_mixingScheme.mixVariable(
+                          iComp == 0 ? mixingVariable::tau :
+                                       mixingVariable::tauMagZ,
+                          d_tauInQuadValues[iComp].data(),
+                          d_tauInQuadValues[iComp].size());
+                      }
+                  }
                 norm = 0.0;
                 for (dftfe::uInt iComp = 0; iComp < norms.size(); ++iComp)
-                  norm += norms[iComp] * norms[iComp];
-                norm = std::sqrt(norm / ((double)norms.size()));
+                  {
+                    double temp =
+                      isTauMGGA ? normsTau[iComp] * normsTau[iComp] : 0;
+                    norm += norms[iComp] * norms[iComp] + temp;
+                  }
+                norm = std::sqrt(norm /
+                                 ((isTauMGGA ? 2 : 1) * (double)norms.size()));
                 // interpolate nodal data to quadrature data
                 if (d_dftParamsPtr->verbosity >= 1)
                   for (dftfe::uInt iComp = 0; iComp < norms.size(); ++iComp)
-                    pcout << d_dftParamsPtr->mixingMethod
-                          << " mixing, L2 norm of "
-                          << (iComp == 0 ? "electron" : "magnetization")
-                          << "-density difference: " << norms[iComp]
-                          << std::endl;
+                    {
+                      pcout << d_dftParamsPtr->mixingMethod
+                            << " mixing, L2 norm of "
+                            << (iComp == 0 ? "electron" : "magnetization")
+                            << "-density difference: " << norms[iComp]
+                            << std::endl;
+                      if (isTauMGGA)
+                        {
+                          pcout << d_dftParamsPtr->mixingMethod
+                                << " mixing, L2 norm of "
+                                << (iComp == 0 ?
+                                      "Kinetic energy density" :
+                                      "magnetization (Kinetic energy density)")
+                                << " difference: " << normsTau[iComp]
+                                << std::endl;
+                        }
+                    }
                 for (dftfe::uInt iComp = 0;
                      iComp < d_densityInNodalValues.size();
                      ++iComp)
@@ -2779,13 +2880,6 @@ namespace dftfe
                             d_tauOutQuadValues[iComp].size());
                         d_basisOperationsPtrElectroHost->reinit(
                           0, 0, d_densityQuadratureIdElectro, false);
-                        double normTau;
-                        normTau = computeResidualQuadData(
-                          d_tauOutQuadValues[iComp],
-                          d_tauInQuadValues[iComp],
-                          d_tauResidualQuadValues[iComp],
-                          d_basisOperationsPtrElectroHost->JxWBasisData(),
-                          true);
 
                         normsTau[iComp] = computeResidualQuadData(
                           d_tauOutQuadValues[iComp],
@@ -2856,8 +2950,13 @@ namespace dftfe
                     d_densityInQuadValues[iComp].size());
                 norm = 0.0;
                 for (dftfe::uInt iComp = 0; iComp < norms.size(); ++iComp)
-                  norm += norms[iComp] * norms[iComp];
-                norm = std::sqrt(norm / ((double)norms.size()));
+                  {
+                    double temp =
+                      isTauMGGA ? normsTau[iComp] * normsTau[iComp] : 0;
+                    norm += norms[iComp] * norms[iComp] + temp;
+                  }
+                norm = std::sqrt(norm /
+                                 ((isTauMGGA ? 2 : 1) * (double)norms.size()));
                 if (isGradDensityDataDependent)
                   {
                     for (dftfe::uInt iComp = 0; iComp < norms.size(); ++iComp)
@@ -2924,7 +3023,7 @@ namespace dftfe
               }
 
             if (d_dftParamsPtr->verbosity >= 1 &&
-                d_dftParamsPtr->spinPolarized == 1)
+                (d_dftParamsPtr->spinPolarized == 1 || isTauMGGA))
               pcout << d_dftParamsPtr->mixingMethod
                     << " mixing, L2 norm of total density difference: " << norm
                     << std::endl;
@@ -3162,7 +3261,7 @@ namespace dftfe
         std::vector<std::vector<double>> maxResidualsAllkPoints(
           d_dftParamsPtr->spinPolarized + 1);
         std::vector<double> maxResSpins(d_dftParamsPtr->spinPolarized + 1, 0.0);
-        double              maxRes = 1.0;
+        double              maxRes = std::numeric_limits<double>::max();
 
         // if the residual norm is greater than
         // adaptiveChebysevFilterPassesTol (a heuristic value)
@@ -3227,7 +3326,7 @@ namespace dftfe
                             *d_elpaScala,
                             d_subspaceIterationSolverDevice,
                             residualNormWaveFunctionsAllkPointsSpins[s][kPoint],
-                            maxPasses > 1,
+                            true,
                             0,
                             true,
                             scfIter == 0);
@@ -3241,7 +3340,7 @@ namespace dftfe
                             *d_elpaScala,
                             d_subspaceIterationSolver,
                             residualNormWaveFunctionsAllkPointsSpins[s][kPoint],
-                            maxPasses > 1,
+                            true,
                             true,
                             scfIter == 0);
                       }
@@ -3295,34 +3394,9 @@ namespace dftfe
 
         numberChebyshevSolvePasses = count;
         computing_timer.enter_subsection("compute rho");
-        if (d_dftParamsPtr->useSymm)
-          {
-#ifdef USE_COMPLEX
-            symmetryPtr->computeLocalrhoOut();
-            symmetryPtr->computeAndSymmetrize_rhoOut();
 
-            l2ProjectionQuadToNodal(d_basisOperationsPtrElectroHost,
-                                    d_constraintsRhoNodal,
-                                    d_densityDofHandlerIndexElectro,
-                                    d_densityQuadratureIdElectro,
-                                    d_densityOutQuadValues[0],
-                                    d_densityOutNodalValues[0]);
-
-            d_basisOperationsPtrElectroHost->interpolate(
-              d_densityOutNodalValues[0],
-              d_densityDofHandlerIndexElectro,
-              d_lpspQuadratureIdElectro,
-              d_densityTotalOutValuesLpspQuad,
-              d_gradDensityTotalOutValuesLpspQuad,
-              d_gradDensityTotalOutValuesLpspQuad,
-              true);
-#endif
-          }
-        else
-          {
-            compute_rhoOut(scfConverged ||
-                           (scfIter == (d_dftParamsPtr->numSCFIterations - 1)));
-          }
+        compute_rhoOut(scfConverged ||
+                       (scfIter == (d_dftParamsPtr->numSCFIterations - 1)));
         computing_timer.leave_subsection("compute rho");
 
         //
@@ -3575,60 +3649,63 @@ namespace dftfe
         //         d_hubbardClassPtr->writeHubbOccToFile();
         //       }
         //   }
-        if (d_dftParamsPtr->saveQuadData && scfIter % 10 == 0 &&
-            d_dftParamsPtr->solverMode == "GS")
-          {
-            std::vector<std::string> field     = {"RHO", "MAG_Z"};
-            std::vector<std::string> Gradfield = {"gradRHO", "gradMAG_Z"};
-            std::vector<std::string> field2    = {"TAU", "TAUMAG_Z"};
-            for (dftfe::Int i = 0; i < d_densityOutQuadValues.size(); i++)
-              {
-                saveQuadratureData(d_basisOperationsPtrHost,
-                                   d_densityQuadratureId,
-                                   d_densityOutQuadValues[i],
-                                   1,
-                                   field[i],
-                                   d_dftParamsPtr->restartFolder,
-                                   d_mpiCommParent,
-                                   mpi_communicator,
-                                   interpoolcomm,
-                                   interBandGroupComm);
-                bool isGradDensityDataDependent =
-                  (d_excManagerPtr->getExcSSDFunctionalObj()
-                     ->getDensityBasedFamilyType() == densityFamilyType::GGA);
-                if (isGradDensityDataDependent)
-                  {
-                    saveQuadratureData(d_basisOperationsPtrHost,
-                                       d_densityQuadratureId,
-                                       d_gradDensityOutQuadValues[i],
-                                       3,
-                                       Gradfield[i],
-                                       d_dftParamsPtr->restartFolder,
-                                       d_mpiCommParent,
-                                       mpi_communicator,
-                                       interpoolcomm,
-                                       interBandGroupComm);
-                  }
-              }
-            if (isTauMGGA)
-              for (dftfe::Int i = 0; i < d_tauOutQuadValues.size(); i++)
-                {
-                  saveQuadratureData(d_basisOperationsPtrHost,
-                                     d_densityQuadratureId,
-                                     d_tauOutQuadValues[i],
-                                     1,
-                                     field2[i],
-                                     d_dftParamsPtr->restartFolder,
-                                     d_mpiCommParent,
-                                     mpi_communicator,
-                                     interpoolcomm,
-                                     interBandGroupComm);
-                }
-            if (d_useHubbard)
-              {
-                d_hubbardClassPtr->writeHubbOccToFile();
-              }
-          }
+
+
+        // if (d_dftParamsPtr->saveQuadData && scfIter % 10 == 0 &&
+        //     d_dftParamsPtr->solverMode == "GS")
+        //   {
+        //     std::vector<std::string> field     = {"RHO", "MAG_Z"};
+        //     std::vector<std::string> Gradfield = {"gradRHO", "gradMAG_Z"};
+        //     std::vector<std::string> field2    = {"TAU", "TAUMAG_Z"};
+        //     for (dftfe::Int i = 0; i < d_densityOutQuadValues.size(); i++)
+        //       {
+        //         saveQuadratureData(d_basisOperationsPtrHost,
+        //                            d_densityQuadratureId,
+        //                            d_densityOutQuadValues[i],
+        //                            1,
+        //                            field[i],
+        //                            d_dftParamsPtr->restartFolder,
+        //                            d_mpiCommParent,
+        //                            mpi_communicator,
+        //                            interpoolcomm,
+        //                            interBandGroupComm);
+        //         bool isGradDensityDataDependent =
+        //           (d_excManagerPtr->getExcSSDFunctionalObj()
+        //              ->getDensityBasedFamilyType() ==
+        //              densityFamilyType::GGA);
+        //         if (isGradDensityDataDependent)
+        //           {
+        //             saveQuadratureData(d_basisOperationsPtrHost,
+        //                                d_densityQuadratureId,
+        //                                d_gradDensityOutQuadValues[i],
+        //                                3,
+        //                                Gradfield[i],
+        //                                d_dftParamsPtr->restartFolder,
+        //                                d_mpiCommParent,
+        //                                mpi_communicator,
+        //                                interpoolcomm,
+        //                                interBandGroupComm);
+        //           }
+        //       }
+        //     if (isTauMGGA)
+        //       for (dftfe::Int i = 0; i < d_tauOutQuadValues.size(); i++)
+        //         {
+        //           saveQuadratureData(d_basisOperationsPtrHost,
+        //                              d_densityQuadratureId,
+        //                              d_tauOutQuadValues[i],
+        //                              1,
+        //                              field2[i],
+        //                              d_dftParamsPtr->restartFolder,
+        //                              d_mpiCommParent,
+        //                              mpi_communicator,
+        //                              interpoolcomm,
+        //                              interBandGroupComm);
+        //         }
+        //     if (d_useHubbard)
+        //       {
+        //         d_hubbardClassPtr->writeHubbOccToFile();
+        //       }
+        //   }
       }
 
     // if (d_dftParamsPtr->saveRhoData &&
@@ -3640,8 +3717,8 @@ namespace dftfe
     //         d_hubbardClassPtr->writeHubbOccToFile();
     //       }
     //   }
-    if (d_dftParamsPtr->saveQuadData &&
-        !(d_dftParamsPtr->solverMode == "GS" && scfIter % 10 == 0))
+
+    if (d_dftParamsPtr->saveQuadData)
       {
         std::vector<std::string> field     = {"RHO", "MAG_Z"};
         std::vector<std::string> Gradfield = {"gradRHO", "gradMAG_Z"};
@@ -3979,7 +4056,13 @@ namespace dftfe
       }
     if (d_dftParamsPtr->verbosity >= 1)
       pcout << "Total free energy: " << d_freeEnergy << std::endl;
-
+    MPI_Barrier(d_mpiCommParent);
+    currentTime = MPI_Wtime();
+    if (d_dftParamsPtr->verbosity >= 3 && !d_dftParamsPtr->reproducible_output)
+      {
+        pcout << "DFT-FE Timer: Total Time taken till now: "
+              << currentTime - d_dftfeClassStartTime << " seconds" << std::endl;
+      }
     if (d_dftParamsPtr->verbosity >= 0 && d_dftParamsPtr->spinPolarized == 1)
       totalMagnetization(d_densityOutQuadValues[1]);
 
@@ -4007,37 +4090,6 @@ namespace dftfe
             << "DFT-FE Warning: Ion force accuracy may be affected for the given scf iteration solve tolerance: "
             << d_dftParamsPtr->selfConsistentSolverTolerance
             << ", recommended to use TOLERANCE below 1e-4." << std::endl;
-
-        if (computeForces)
-          {
-            computing_timer.enter_subsection("Ion force computation");
-            computingTimerStandard.enter_subsection("Ion force computation");
-            forcePtr->computeAtomsForces(matrix_free_data,
-                                         d_dispersionCorr,
-                                         d_eigenDofHandlerIndex,
-                                         d_smearedChargeQuadratureIdElectro,
-                                         d_lpspQuadratureIdElectro,
-                                         d_matrixFreeDataPRefined,
-                                         d_phiTotDofHandlerIndexElectro,
-                                         d_phiTotRhoOut,
-                                         d_densityOutQuadValues,
-                                         d_gradDensityOutQuadValues,
-                                         d_densityTotalOutValuesLpspQuad,
-                                         d_gradDensityTotalOutValuesLpspQuad,
-                                         d_rhoCore,
-                                         d_gradRhoCore,
-                                         d_hessianRhoCore,
-                                         d_gradRhoCoreAtoms,
-                                         d_hessianRhoCoreAtoms,
-                                         d_pseudoVLoc,
-                                         d_pseudoVLocAtoms,
-                                         d_constraintsPRefined,
-                                         d_vselfBinsManager);
-            if (d_dftParamsPtr->verbosity >= 0)
-              forcePtr->printAtomsForces();
-            computingTimerStandard.leave_subsection("Ion force computation");
-            computing_timer.leave_subsection("Ion force computation");
-          }
       }
 
     if (d_dftParamsPtr->isCellStress)
@@ -4048,56 +4100,135 @@ namespace dftfe
             << "DFT-FE Warning: Cell stress accuracy may be affected for the given scf iteration solve tolerance: "
             << d_dftParamsPtr->selfConsistentSolverTolerance
             << ", recommended to use TOLERANCE below 1e-4." << std::endl;
-
-        if (computestress)
+      }
+    if (d_dftParamsPtr->isIonForce || d_dftParamsPtr->isCellStress)
+      {
+        if (computeForces || computestress)
           {
-            computing_timer.enter_subsection("Cell stress computation");
-            computingTimerStandard.enter_subsection("Cell stress computation");
-            computeStress();
-            computingTimerStandard.leave_subsection("Cell stress computation");
-            computing_timer.leave_subsection("Cell stress computation");
+            computing_timer.enter_subsection("Force and Stress computation");
+            computingTimerStandard.enter_subsection(
+              "Force and Stress computation");
+            if (d_dftParamsPtr->isCellStress && computestress &&
+                (d_dftParamsPtr->isPseudopotential ||
+                 d_dftParamsPtr->smearedNuclearCharges))
+              {
+                computeVselfFieldGateauxDerFD();
+              }
+#ifdef DFTFE_WITH_DEVICE
+            if constexpr (memorySpace == dftfe::utils::MemorySpace::DEVICE)
+              d_configForcePtr->computeForceAndStress(
+                d_numEigenValues,
+                d_kPointCoordinates,
+                d_kPointWeights,
+                d_domainBoundingVectors,
+                d_domainVolume,
+                groupSymmetryPtr,
+                d_dispersionCorr,
+                d_eigenVectorsFlattenedDevice,
+                eigenValues,
+                d_partialOccupancies,
+                atomLocations,
+                d_imageIdsTrunc,
+                d_imageChargesTrunc,
+                d_imagePositionsTrunc,
+                d_phiTotRhoOut,
+                d_rhoOutNodalValuesDistributed,
+                d_densityOutQuadValues,
+                d_gradDensityOutQuadValues,
+                d_tauOutQuadValues,
+                d_densityTotalOutValuesLpspQuad,
+                d_gradDensityTotalOutValuesLpspQuad,
+                d_auxDensityMatrixXCOutPtr,
+                d_rhoCore,
+                d_gradRhoCore,
+                d_hessianRhoCore,
+                d_gradRhoCoreAtoms,
+                d_hessianRhoCoreAtoms,
+                d_pseudoVLoc,
+                d_pseudoVLocAtoms,
+                d_dofHandlerRhoNodal,
+                d_vselfBinsManager,
+                d_vselfFieldGateauxDerStrainFDBins,
+                d_binsStartDofHandlerIndexElectro,
+                d_phiExtDofHandlerIndexElectro,
+                d_bQuadAtomIdsAllAtoms,
+                d_bQuadAtomIdsAllAtomsImages,
+                d_bQuadValuesAllAtoms,
+                d_smearedChargeWidths,
+                d_smearedChargeScaling,
+                d_gaussianConstantsForce,
+                d_generatorFlatTopWidths,
+                d_dftParamsPtr->floatingNuclearCharges,
+                d_dftParamsPtr->isIonForce && computeForces,
+                d_dftParamsPtr->isCellStress && computestress);
+            else
+#endif
+              d_configForcePtr->computeForceAndStress(
+                d_numEigenValues,
+                d_kPointCoordinates,
+                d_kPointWeights,
+                d_domainBoundingVectors,
+                d_domainVolume,
+                groupSymmetryPtr,
+                d_dispersionCorr,
+                d_eigenVectorsFlattenedHost,
+                eigenValues,
+                d_partialOccupancies,
+                atomLocations,
+                d_imageIdsTrunc,
+                d_imageChargesTrunc,
+                d_imagePositionsTrunc,
+                d_phiTotRhoOut,
+                d_rhoOutNodalValuesDistributed,
+                d_densityOutQuadValues,
+                d_gradDensityOutQuadValues,
+                d_tauOutQuadValues,
+                d_densityTotalOutValuesLpspQuad,
+                d_gradDensityTotalOutValuesLpspQuad,
+                d_auxDensityMatrixXCOutPtr,
+                d_rhoCore,
+                d_gradRhoCore,
+                d_hessianRhoCore,
+                d_gradRhoCoreAtoms,
+                d_hessianRhoCoreAtoms,
+                d_pseudoVLoc,
+                d_pseudoVLocAtoms,
+                d_dofHandlerRhoNodal,
+                d_vselfBinsManager,
+                d_vselfFieldGateauxDerStrainFDBins,
+                d_binsStartDofHandlerIndexElectro,
+                d_phiExtDofHandlerIndexElectro,
+                d_bQuadAtomIdsAllAtoms,
+                d_bQuadAtomIdsAllAtomsImages,
+                d_bQuadValuesAllAtoms,
+                d_smearedChargeWidths,
+                d_smearedChargeScaling,
+                d_gaussianConstantsForce,
+                d_generatorFlatTopWidths,
+                d_dftParamsPtr->floatingNuclearCharges,
+                d_dftParamsPtr->isIonForce && computeForces,
+                d_dftParamsPtr->isCellStress && computestress);
+            if (d_dftParamsPtr->isIonForce && computeForces &&
+                (d_dftParamsPtr->verbosity >= 0))
+              d_configForcePtr->printAtomsForces();
+            if (d_dftParamsPtr->isCellStress && computestress &&
+                (d_dftParamsPtr->verbosity >= 0))
+              d_configForcePtr->printStress();
+            computingTimerStandard.leave_subsection(
+              "Force and Stress computation");
+            MPI_Barrier(d_mpiCommParent);
+            double currentTime = MPI_Wtime();
+            if (d_dftParamsPtr->verbosity >= 3 &&
+                !d_dftParamsPtr->reproducible_output)
+              {
+                pcout << "DFT-FE Timer: Total Time taken till now: "
+                      << currentTime - d_dftfeClassStartTime << " seconds"
+                      << std::endl;
+              }
+            computing_timer.leave_subsection("Force and Stress computation");
           }
       }
     return std::make_tuple(scfConverged, norm);
-  }
-
-
-  template <dftfe::utils::MemorySpace memorySpace>
-  void
-  dftClass<memorySpace>::computeStress()
-  {
-    KohnShamDFTBaseOperator<memorySpace> &kohnShamDFTEigenOperator =
-      *d_kohnShamDFTOperatorPtr;
-
-    if (d_dftParamsPtr->isPseudopotential ||
-        d_dftParamsPtr->smearedNuclearCharges)
-      {
-        computeVselfFieldGateauxDerFD();
-      }
-
-    forcePtr->computeStress(matrix_free_data,
-                            d_dispersionCorr,
-                            d_eigenDofHandlerIndex,
-                            d_smearedChargeQuadratureIdElectro,
-                            d_lpspQuadratureIdElectro,
-                            d_matrixFreeDataPRefined,
-                            d_phiTotDofHandlerIndexElectro,
-                            d_phiTotRhoOut,
-                            d_densityOutQuadValues,
-                            d_gradDensityOutQuadValues,
-                            d_densityTotalOutValuesLpspQuad,
-                            d_gradDensityTotalOutValuesLpspQuad,
-                            d_pseudoVLoc,
-                            d_pseudoVLocAtoms,
-                            d_rhoCore,
-                            d_gradRhoCore,
-                            d_hessianRhoCore,
-                            d_gradRhoCoreAtoms,
-                            d_hessianRhoCoreAtoms,
-                            d_constraintsPRefined,
-                            d_vselfBinsManager);
-    if (d_dftParamsPtr->verbosity >= 0)
-      forcePtr->printStress();
   }
 
   template <dftfe::utils::MemorySpace memorySpace>
@@ -4374,11 +4505,8 @@ namespace dftfe
       std::numeric_limits<double>::min(),
       std::numeric_limits<dftfe::uInt>::min(),
       true,
-      dealii::DataOutBase::VtkFlags::ZlibCompressionLevel::
-        best_speed, // This flag is version dependent for dealII 9.5.0 it
-                    // is
-                    // dealii::DataOutBase::CompressionLevel::best_speed
-      true));       // higher order cells set to true
+      dealii::DataOutBase::CompressionLevel::best_speed,
+      true)); // higher order cells set to true
     data_outEigen.build_patches(d_dftParamsPtr->finiteElementPolynomialOrder);
 
     std::string tempFolder = "waveFunctionOutputFolder";
@@ -4448,11 +4576,8 @@ namespace dftfe
       std::numeric_limits<double>::min(),
       std::numeric_limits<dftfe::uInt>::min(),
       true,
-      dealii::DataOutBase::VtkFlags::ZlibCompressionLevel::
-        best_speed, // This flag is version dependent for dealII 9.5.0 it
-                    // is
-                    // dealii::DataOutBase::CompressionLevel::best_speed
-      true));       // higher order cells set to true
+      dealii::DataOutBase::CompressionLevel::best_speed,
+      true)); // higher order cells set to true
     dataOutRho.build_patches(d_dftParamsPtr->finiteElementPolynomialOrder);
 
     std::string tempFolder = "densityOutputFolder";
@@ -4618,7 +4743,7 @@ namespace dftfe
       }
 
     dftfe::uInt numberEigenValues =
-      d_dftParamsPtr->highestStateOfInterestForChebFiltering;
+      d_dftParamsPtr->highestStateOfInterestForChebFiltering + 1;
     if (dealii::Utilities::MPI::this_mpi_process(d_mpiCommParent) == 0)
       {
         FILE *pFile;
@@ -4775,14 +4900,14 @@ namespace dftfe
   const std::vector<double> &
   dftClass<memorySpace>::getForceonAtoms() const
   {
-    return (forcePtr->getAtomsForces());
+    return (d_configForcePtr->getAtomsForces());
   }
 
   template <dftfe::utils::MemorySpace memorySpace>
   const dealii::Tensor<2, 3, double> &
   dftClass<memorySpace>::getCellStress() const
   {
-    return (forcePtr->getStress());
+    return (d_configForcePtr->getStress());
   }
 
   template <dftfe::utils::MemorySpace memorySpace>
@@ -4994,11 +5119,8 @@ namespace dftfe
       std::numeric_limits<double>::min(),
       std::numeric_limits<dftfe::uInt>::min(),
       true,
-      dealii::DataOutBase::VtkFlags::ZlibCompressionLevel::
-        best_speed, // This flag is version dependent for dealII 9.5.0 it
-                    // is
-                    // dealii::DataOutBase::CompressionLevel::best_speed
-      true));       // higher order cells set to true
+      dealii::DataOutBase::CompressionLevel::best_speed,
+      true)); // higher order cells set to true
     dataOutRho.build_patches(d_dftParamsPtr->finiteElementPolynomialOrder);
 
     std::string tempFolder = "meshOutputFolder";
@@ -5073,33 +5195,6 @@ namespace dftfe
                                       d_densityDofHandlerIndexElectro,
                                       d_densityQuadratureIdElectro);
     return normValue;
-  }
-  template <dftfe::utils::MemorySpace memorySpace>
-  void
-  dftClass<memorySpace>::determineAtomsOfInterstPseudopotential(
-    const std::vector<std::vector<double>> &atomCoordinates)
-  {
-    d_atomLocationsInterestPseudopotential.clear();
-    d_atomIdPseudopotentialInterestToGlobalId.clear();
-    dftfe::uInt atomIdPseudo = 0;
-    // pcout<<"Atoms of interest: "<<std::endl;
-    for (dftfe::uInt iAtom = 0; iAtom < atomCoordinates.size(); iAtom++)
-      {
-        if (true)
-          {
-            d_atomLocationsInterestPseudopotential.push_back(
-              atomCoordinates[iAtom]);
-            d_atomIdPseudopotentialInterestToGlobalId[atomIdPseudo] = iAtom;
-            // pcout<<iAtom<<" "<<atomIdPseudo<<" ";
-            // for(dftfe::Int i = 0; i <
-            // d_atomLocationsInterestPseudopotential[atomIdPseudo].size();
-            // i++)
-            //   pcout<<d_atomLocationsInterestPseudopotential[atomIdPseudo][i]<<"
-            //   ";
-            // pcout<<std::endl;
-            atomIdPseudo++;
-          }
-      }
   }
 
   template <dftfe::utils::MemorySpace memorySpace>
@@ -5486,10 +5581,12 @@ namespace dftfe
 
     if (d_dftParamsPtr->auxBasisTypeXC == "FE")
       {
-        std::unordered_map<std::string, std::vector<double>>
-                             densityProjectionInputs;
-        std::vector<double> &densityValsForXC =
-          densityProjectionInputs["densityFunc"];
+        std::unordered_map<
+          std::string,
+          dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>>
+          densityProjectionInputs;
+        dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>
+          &densityValsForXC = densityProjectionInputs["densityFunc"];
         densityValsForXC.resize(2 * totalLocallyOwnedCells * nQuadsPerCell, 0);
 
         if (spinPolarizedFactor == 1)
@@ -5550,8 +5647,9 @@ namespace dftfe
           }
         if (isGGA)
           {
-            std::vector<double> &gradDensityValsForXC =
-              densityProjectionInputs["gradDensityFunc"];
+            dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>
+              &gradDensityValsForXC =
+                densityProjectionInputs["gradDensityFunc"];
 
             gradDensityValsForXC.resize(2 * totalLocallyOwnedCells *
                                           nQuadsPerCell * 3,
@@ -5641,8 +5739,8 @@ namespace dftfe
           }
         if (isTauMGGA)
           {
-            std::vector<double> &tauValsForXC =
-              densityProjectionInputs["tauFunc"];
+            dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>
+              &tauValsForXC = densityProjectionInputs["tauFunc"];
             tauValsForXC.resize(2 * totalLocallyOwnedCells * nQuadsPerCell, 0);
             if (spinPolarizedFactor == 1)
               {
@@ -5693,12 +5791,12 @@ namespace dftfe
 
         auto quadPoints = d_basisOperationsPtrHost->quadPoints();
 
-        auto                 quadWeights = d_basisOperationsPtrHost->JxW();
-        std::vector<double> &quadPointsStdVec =
-          densityProjectionInputs["quadpts"];
+        auto quadWeights = d_basisOperationsPtrHost->JxW();
+        dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>
+          &quadPointsStdVec = densityProjectionInputs["quadpts"];
         quadPointsStdVec.resize(quadPoints.size());
-        std::vector<double> &quadWeightsStdVec =
-          densityProjectionInputs["quadWt"];
+        dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>
+          &quadWeightsStdVec = densityProjectionInputs["quadWt"];
         quadWeightsStdVec.resize(quadWeights.size());
         for (dftfe::uInt iQuad = 0; iQuad < quadWeightsStdVec.size(); ++iQuad)
           {

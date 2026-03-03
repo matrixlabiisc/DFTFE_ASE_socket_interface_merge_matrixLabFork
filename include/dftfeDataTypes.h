@@ -20,14 +20,13 @@
 #ifndef dftfeDataTypes_H_
 #define dftfeDataTypes_H_
 
-#include <deal.II/base/config.h>
-#include <deal.II/base/types.h>
-
 // Include generic C++ headers
 #include <fstream>
 #include <iostream>
 #include <fenv.h>
-
+#include <complex>
+#include <mpi.h>
+#include <cstdint>
 // commonly used  typedefs used in dftfe go here
 namespace dftfe
 {
@@ -125,6 +124,35 @@ namespace dftfe
       typedef std::complex<float> type;
     };
 
+    template <typename T>
+    struct halfPrecType
+    {
+      typedef T type;
+    };
+
+    template <>
+    struct halfPrecType<double>
+    {
+      typedef uint16_t type;
+    };
+
+    template <>
+    struct halfPrecType<std::complex<double>>
+    {
+      typedef std::complex<uint16_t> type;
+    };
+
+    template <>
+    struct halfPrecType<float>
+    {
+      typedef uint16_t type;
+    };
+
+    template <>
+    struct halfPrecType<std::complex<float>>
+    {
+      typedef std::complex<uint16_t> type;
+    };
   } // namespace dataTypes
 } // namespace dftfe
 

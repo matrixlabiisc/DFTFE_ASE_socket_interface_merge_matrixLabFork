@@ -23,7 +23,10 @@
 #include <excDensityLLMGGAClass.h>
 #include <excTauMGGAClass.h>
 #include "ExcDFTPlusU.h"
-
+#include <excManagerKernels.h>
+#if defined(DFTFE_WITH_DEVICE)
+#  include <DeviceAPICalls.h>
+#endif
 namespace dftfe
 {
   namespace
@@ -43,13 +46,14 @@ namespace dftfe
                      std::shared_ptr<xc_func_type> funcXPtr,
                      std::shared_ptr<xc_func_type> funcCPtr,
                      std::string                   modelXCInputFile,
-                     bool                          printXCInfo)
+                     bool                          printXCInfo,
+                     const bool                    useLibxc)
     {
       dftfe::Int exceptParamX = -1, exceptParamC = -1;
 
       int vmajor, vminor, vmicro;
       xc_version(&vmajor, &vminor, &vmicro);
-      if (printXCInfo)
+      if (printXCInfo && useLibxc)
         printf("Libxc version: %d.%d.%d\n", vmajor, vminor, vmicro);
 
       std::shared_ptr<ExcSSDFunctionalBaseClass<memorySpace>> excObj;
@@ -59,15 +63,20 @@ namespace dftfe
           exceptParamC =
             xc_func_init(funcCPtr.get(), XC_LDA_C_PZ, XC_POLARIZED);
           excObj = std::make_shared<excDensityLDAClass<memorySpace>>(funcXPtr,
-                                                                     funcCPtr);
+                                                                     funcCPtr,
+                                                                     useLibxc,
+                                                                     XCType);
         }
       else if (XCType == "LDA-PW")
         {
           exceptParamX = xc_func_init(funcXPtr.get(), XC_LDA_X, XC_POLARIZED);
           exceptParamC =
             xc_func_init(funcCPtr.get(), XC_LDA_C_PW, XC_POLARIZED);
+
           excObj = std::make_shared<excDensityLDAClass<memorySpace>>(funcXPtr,
-                                                                     funcCPtr);
+                                                                     funcCPtr,
+                                                                     useLibxc,
+                                                                     XCType);
         }
       else if (XCType == "LDA-VWN")
         {
@@ -75,7 +84,9 @@ namespace dftfe
           exceptParamC =
             xc_func_init(funcCPtr.get(), XC_LDA_C_VWN, XC_POLARIZED);
           excObj = std::make_shared<excDensityLDAClass<memorySpace>>(funcXPtr,
-                                                                     funcCPtr);
+                                                                     funcCPtr,
+                                                                     useLibxc,
+                                                                     XCType);
         }
       else if (XCType == "GGA-PBE")
         {
@@ -85,7 +96,9 @@ namespace dftfe
             xc_func_init(funcCPtr.get(), XC_GGA_C_PBE, XC_POLARIZED);
 
           excObj = std::make_shared<excDensityGGAClass<memorySpace>>(funcXPtr,
-                                                                     funcCPtr);
+                                                                     funcCPtr,
+                                                                     useLibxc,
+                                                                     XCType);
         }
       else if (XCType == "GGA-RPBE")
         {
@@ -93,8 +106,35 @@ namespace dftfe
             xc_func_init(funcXPtr.get(), XC_GGA_X_RPBE, XC_POLARIZED);
           exceptParamC =
             xc_func_init(funcCPtr.get(), XC_GGA_C_PBE, XC_POLARIZED);
+
           excObj = std::make_shared<excDensityGGAClass<memorySpace>>(funcXPtr,
-                                                                     funcCPtr);
+                                                                     funcCPtr,
+                                                                     useLibxc,
+                                                                     XCType);
+        }
+      else if (XCType == "GGA-REVPBE")
+        {
+          exceptParamX =
+            xc_func_init(funcXPtr.get(), XC_GGA_X_PBE_R, XC_POLARIZED);
+          exceptParamC =
+            xc_func_init(funcCPtr.get(), XC_GGA_C_PBE, XC_POLARIZED);
+
+          excObj = std::make_shared<excDensityGGAClass<memorySpace>>(funcXPtr,
+                                                                     funcCPtr,
+                                                                     useLibxc,
+                                                                     XCType);
+        }
+      else if (XCType == "GGA-PBESOL")
+        {
+          exceptParamX =
+            xc_func_init(funcXPtr.get(), XC_GGA_X_PBE_SOL, XC_POLARIZED);
+          exceptParamC =
+            xc_func_init(funcCPtr.get(), XC_GGA_C_PBE_SOL, XC_POLARIZED);
+
+          excObj = std::make_shared<excDensityGGAClass<memorySpace>>(funcXPtr,
+                                                                     funcCPtr,
+                                                                     useLibxc,
+                                                                     XCType);
         }
       else if (XCType == "GGA-LBxPBEc")
         {
@@ -104,17 +144,17 @@ namespace dftfe
             xc_func_init(funcCPtr.get(), XC_GGA_C_PBE, XC_POLARIZED);
 
           excObj = std::make_shared<excDensityGGAClass<memorySpace>>(funcXPtr,
-                                                                     funcCPtr);
+                                                                     funcCPtr,
+                                                                     useLibxc,
+                                                                     XCType);
         }
       else if (XCType == "MLXC-NNLDA")
         {
           exceptParamX = xc_func_init(funcXPtr.get(), XC_LDA_X, XC_POLARIZED);
           exceptParamC =
             xc_func_init(funcCPtr.get(), XC_LDA_C_PW, XC_POLARIZED);
-          excObj =
-            std::make_shared<excDensityLDAClass<memorySpace>>(funcXPtr,
-                                                              funcCPtr,
-                                                              modelXCInputFile);
+          excObj = std::make_shared<excDensityLDAClass<memorySpace>>(
+            funcXPtr, funcCPtr, modelXCInputFile, useLibxc, XCType);
         }
       else if (XCType == "MLXC-NNGGA")
         {
@@ -122,10 +162,8 @@ namespace dftfe
             xc_func_init(funcXPtr.get(), XC_GGA_X_PBE, XC_POLARIZED);
           exceptParamC =
             xc_func_init(funcCPtr.get(), XC_GGA_C_PBE, XC_POLARIZED);
-          excObj =
-            std::make_shared<excDensityGGAClass<memorySpace>>(funcXPtr,
-                                                              funcCPtr,
-                                                              modelXCInputFile);
+          excObj = std::make_shared<excDensityGGAClass<memorySpace>>(
+            funcXPtr, funcCPtr, modelXCInputFile, useLibxc, XCType);
         }
       else if (XCType == "MLXC-NNLLMGGA")
         {
@@ -134,16 +172,19 @@ namespace dftfe
           exceptParamC =
             xc_func_init(funcCPtr.get(), XC_GGA_C_PBE, XC_POLARIZED);
           excObj = std::make_shared<excDensityLLMGGAClass<memorySpace>>(
-            funcXPtr, funcCPtr, modelXCInputFile);
+            funcXPtr, funcCPtr, modelXCInputFile, useLibxc);
         }
+
       else if (XCType == "MGGA-SCAN")
         {
           exceptParamX =
             xc_func_init(funcXPtr.get(), XC_MGGA_X_SCAN, XC_POLARIZED);
           exceptParamC =
             xc_func_init(funcCPtr.get(), XC_MGGA_C_SCAN, XC_POLARIZED);
-          excObj =
-            std::make_shared<excTauMGGAClass<memorySpace>>(funcXPtr, funcCPtr);
+          excObj = std::make_shared<excTauMGGAClass<memorySpace>>(funcXPtr,
+                                                                  funcCPtr,
+                                                                  useLibxc,
+                                                                  XCType);
         }
       else if (XCType == "MGGA-R2SCAN")
         {
@@ -151,8 +192,10 @@ namespace dftfe
             xc_func_init(funcXPtr.get(), XC_MGGA_X_R2SCAN, XC_POLARIZED);
           exceptParamC =
             xc_func_init(funcCPtr.get(), XC_MGGA_C_R2SCAN, XC_POLARIZED);
-          excObj =
-            std::make_shared<excTauMGGAClass<memorySpace>>(funcXPtr, funcCPtr);
+          excObj = std::make_shared<excTauMGGAClass<memorySpace>>(funcXPtr,
+                                                                  funcCPtr,
+                                                                  useLibxc,
+                                                                  XCType);
         }
       else
         {
@@ -185,6 +228,113 @@ namespace dftfe
       return excObj;
     }
   } // namespace
+
+  namespace internal
+  {
+    template <>
+    void
+    fillRhoVector(
+      const dftfe::uInt numQuadPoints,
+      const dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>
+        &densitySpinUp,
+      const dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>
+        &densitySpinDown,
+      dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>
+        &rhoVector)
+    {
+      for (dftfe::uInt iQuad = 0; iQuad < numQuadPoints; iQuad++)
+        {
+          rhoVector[2 * iQuad + 0] = densitySpinUp[iQuad];
+          rhoVector[2 * iQuad + 1] = densitySpinDown[iQuad];
+        }
+    }
+
+    template <>
+    void
+    fillRhoSigmaVector(
+      const dftfe::uInt numQuadPoints,
+      const dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>
+        &densitySpinUp,
+      const dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>
+        &densitySpinDown,
+      const dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>
+        &gradDensitySpinUp,
+      const dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>
+        &gradDensitySpinDown,
+      dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>
+        &rhoVector,
+      dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>
+        &sigmaVector)
+    {
+      for (dftfe::uInt iQuad = 0; iQuad < numQuadPoints; iQuad++)
+        {
+          rhoVector[2 * iQuad + 0] = densitySpinUp[iQuad];
+          rhoVector[2 * iQuad + 1] = densitySpinDown[iQuad];
+          for (dftfe::uInt j = 0; j < 3; j++)
+            {
+              sigmaVector[3 * iQuad + 0] += gradDensitySpinUp[3 * iQuad + j] *
+                                            gradDensitySpinUp[3 * iQuad + j];
+              sigmaVector[3 * iQuad + 1] += gradDensitySpinUp[3 * iQuad + j] *
+                                            gradDensitySpinDown[3 * iQuad + j];
+              sigmaVector[3 * iQuad + 2] += gradDensitySpinDown[3 * iQuad + j] *
+                                            gradDensitySpinDown[3 * iQuad + j];
+            }
+        }
+    }
+
+    template <>
+    void
+    fillRhoSigmaTauVector(
+      const dftfe::uInt numQuadPoints,
+      const dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>
+        &densitySpinUp,
+      const dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>
+        &densitySpinDown,
+      const dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>
+        &gradDensitySpinUp,
+      const dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>
+        &gradDensitySpinDown,
+      const dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>
+        &tauSpinUp,
+      const dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>
+        &tauSpinDown,
+      dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>
+        &rhoVector,
+      dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>
+        &sigmaVector,
+      dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>
+                  &tauVector,
+      const double rhoThreshold,
+      const double sigmaThreshold,
+      const double tauThreshold)
+    {
+      for (dftfe::uInt iQuad = 0; iQuad < numQuadPoints; iQuad++)
+        {
+          rhoVector[2 * iQuad + 0] =
+            std::max(std::abs(densitySpinUp[iQuad]), rhoThreshold);
+          rhoVector[2 * iQuad + 1] =
+            std::max(std::abs(densitySpinDown[iQuad]), rhoThreshold);
+          for (dftfe::uInt j = 0; j < 3; j++)
+            {
+              sigmaVector[3 * iQuad + 0] += gradDensitySpinUp[3 * iQuad + j] *
+                                            gradDensitySpinUp[3 * iQuad + j];
+              sigmaVector[3 * iQuad + 1] += gradDensitySpinUp[3 * iQuad + j] *
+                                            gradDensitySpinDown[3 * iQuad + j];
+              sigmaVector[3 * iQuad + 2] += gradDensitySpinDown[3 * iQuad + j] *
+                                            gradDensitySpinDown[3 * iQuad + j];
+            }
+          sigmaVector[3 * iQuad + 0] =
+            std::max(std::abs(sigmaVector[3 * iQuad + 0]), sigmaThreshold);
+          sigmaVector[3 * iQuad + 2] =
+            std::max(std::abs(sigmaVector[3 * iQuad + 2]), sigmaThreshold);
+          tauVector[2 * iQuad + 0] =
+            std::max(std::abs(tauSpinUp[iQuad]), tauThreshold);
+          tauVector[2 * iQuad + 1] =
+            std::max(std::abs(tauSpinDown[iQuad]), tauThreshold);
+        }
+    }
+
+  }; // namespace internal
   template <dftfe::utils::MemorySpace memorySpace>
   excManager<memorySpace>::excManager()
   {}
@@ -220,7 +370,8 @@ namespace dftfe
   excManager<memorySpace>::init(std::string XCType,
                                 bool        isSpinPolarized,
                                 std::string modelXCInputFile,
-                                const bool  printXCInfo)
+                                const bool  printXCInfo,
+                                const bool  useLibxc)
   {
     clear();
 
@@ -243,17 +394,24 @@ namespace dftfe
         std::string XCInput = "";
         if (XCType.size() > 2)
           XCInput = XCType.substr(0, XCType.size() - 2);
-
         d_excObj =
           std::make_shared<ExcDFTPlusU<dataTypes::number, memorySpace>>(
-            initializeSSDPtr<memorySpace>(
-              XCInput, d_funcXPtr, d_funcCPtr, modelXCInputFile, printXCInfo),
+            initializeSSDPtr<memorySpace>(XCInput,
+                                          d_funcXPtr,
+                                          d_funcCPtr,
+                                          modelXCInputFile,
+                                          printXCInfo,
+                                          useLibxc),
             numSpin);
       }
     else
       {
-        d_excObj = initializeSSDPtr<memorySpace>(
-          XCType, d_funcXPtr, d_funcCPtr, modelXCInputFile, printXCInfo);
+        d_excObj = initializeSSDPtr<memorySpace>(XCType,
+                                                 d_funcXPtr,
+                                                 d_funcCPtr,
+                                                 modelXCInputFile,
+                                                 printXCInfo,
+                                                 useLibxc);
       }
   }
 

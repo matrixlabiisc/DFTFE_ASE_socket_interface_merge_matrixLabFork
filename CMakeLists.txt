@@ -5,6 +5,7 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.17)
 set(CMAKE_CXX_STANDARD 17
     CACHE STRING "Minimum required C++ standard (default is 17)")
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 # Set the name of the project and target:
 SET(TARGET "dftfe_exe")
@@ -24,12 +25,19 @@ IF("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
   add_compile_options("-O2")
 ENDIF()
 
+IF (USE_64BIT_INT)
+  IF ("${GPU_VENDOR}" STREQUAL "intel")
+    add_compile_options("-fno-sycl-id-queries-fit-in-int")
+  ENDIF()
+ENDIF()
+
 PROJECT(${TARGET} LANGUAGES CXX)
 IF (WITH_GPU)
     IF ("${GPU_LANG}" STREQUAL "cuda")
       enable_language(CUDA)
     ELSEIF ("${GPU_LANG}" STREQUAL "hip")
       enable_language(HIP)
+    ELSEIF ("${GPU_LANG}" STREQUAL "sycl")
     ELSE ()
       MESSAGE(FATAL_ERROR "\n"
     "*** Could not find valid GPU_LANG=cuda/hip ***\n\n"
@@ -102,21 +110,18 @@ SET(TARGET_SRC
   ./src/excManager/SlaterBasis.cpp
   ./src/excManager/GaussianBasis.cpp
   ./src/excManager/hubbardClass.cpp
+  ./src/excManager/exchangeCorrelationFunctionalEvaluatorCPU.cc
   ./src/poisson/poissonSolverProblem.cc
   ./src/poisson/MultiVectorPoissonLinearSolverProblem.cpp
   ./src/helmholtz/kerkerSolverProblem.cc
   ./src/dftOperator/KohnShamDFTBaseOperator.cc
   ./src/dftOperator/KohnShamDFTStandardEigenOperator.cc
   ./src/dftOperator/veffPrimeForLRDM.cc
-  ./src/force/force.cc
-  ./src/force/forceWfcContractions.cc
-  ./src/force/eshelbyTensor/eshelbyTensor.cc
-  ./src/force/eshelbyTensor/eshelbyTensorSpinPolarized.cc
   ./src/triangulation/meshMovement/meshMovement.cc
   ./src/triangulation/meshMovement/meshMovementGaussian.cc
   ./src/triangulation/meshMovement/meshMovementAffineTransform.cc
   ./src/triangulation/triangulationManager/triangulationManager.cc
-  ./src/symmetry/initGroupSymmetry.cc
+  ./src/symmetry/groupSymmetry.cc
   ./src/geoOpt/geoOptIon.cc
   ./src/geoOpt/geoOptCell.cc
   ./src/solvers/nonlinearSolverProblem.cc
@@ -181,7 +186,6 @@ SET(TARGET_SRC
   ./src/dft/moveAtoms.cc
   ./src/dft/moveMeshToAtoms.cc
   ./src/dft/kerker.cc
-  ./src/dft/kineticEnergyDensityCalculator.cc
   ./src/dft/pRefinedDoFHandler.cc
   ./src/dft/psiInitialGuess.cc
   ./src/dft/publicMethods.cc
@@ -191,28 +195,10 @@ SET(TARGET_SRC
   ./src/dft/lowrankApproxScfDielectricMatrixInv.cc
   ./src/dft/lowrankApproxScfDielectricMatrixInvSpinPolarized.cc
   ./src/dft/computeOutputDensityDirectionalDerivative.cc
-  ./src/force/configurationalForceCompute/FNonlinearCoreCorrectionGammaAtomsElementalContribution.cc
-  ./src/force/configurationalForceCompute/FPSPLocalGammaAtomsElementalContribution.cc
-  ./src/force/configurationalForceCompute/FSmearedChargesGammaAtomsElementalContribution.cc
-  ./src/force/configurationalForceCompute/FnlGammaElementalContribution.cc
-  ./src/force/configurationalForceCompute/accumulateForceContributionGammaAtomsFloating.cc
-  ./src/force/configurationalForceCompute/computeFloatingAtomsForces.cc
-  ./src/force/configurationalForceCompute/configurationalForceEEshelbyFPSPFnlLinFE.cc
-  ./src/force/configurationalForceCompute/configurationalForceEselfLinFE.cc
-  ./src/force/configurationalForceCompute/gaussianGeneratorConfForceOpt.cc
-  ./src/force/configurationalStressCompute/ENonlinearCoreCorrectionContribution.cc
-  ./src/force/configurationalStressCompute/EnlStressContribution.cc
-  ./src/force/configurationalStressCompute/EPSPStressContribution.cc
-  ./src/force/configurationalStressCompute/ESmearedStressContribution.cc
-  ./src/force/configurationalStressCompute/computeStressEEshelbyEPSPEnlEk.cc
-  ./src/force/configurationalStressCompute/computeStressEself.cc
-  ./src/force/configurationalStressCompute/stress.cc
-  ./src/force/createBinObjectsForce.cc
-  ./src/force/locateAtomCoreNodesForce.cc
+  ./src/force/configurationalForce.cc
   ./utils/FEBasisOperationsKernelsInternalHost.cc
   ./utils/FEBasisOperations.cc
   ./utils/FEBasisOperationsKernels.cc
-  ./src/force/locateAtomCoreNodesForce.cc
   ./src/atom/AtomicCenteredNonLocalOperator.cc
   ./src/atom/AtomPseudoWavefunctions.cc
   ./src/atom/AtomCenteredSphericalFunctionContainer.cc
@@ -225,7 +211,7 @@ SET(TARGET_SRC
   ./src/atom/AtomCenteredSphericalFunctionCoreDensitySpline.cc
   ./src/atom/AtomCenteredSphericalFunctionLocalPotentialSpline.cc
   ./src/atom/AtomCenteredSphericalFunctionProjectorSpline.cc
-        ./src/atom/AtomCenteredPseudoWavefunctionSpline.cpp
+  ./src/atom/AtomCenteredPseudoWavefunctionSpline.cpp
   ./src/TransferBetweenMeshes/InterpolateFromCellToLocalPoints.cpp
   ./src/TransferBetweenMeshes/TransferBetweenMeshesIncompatiblePartitioning.cpp
   ./src/TransferBetweenMeshes/InterpolateCellWiseDataToPoints.cpp
@@ -243,9 +229,7 @@ SET(DEVICE_SRC
   ./src/dft/densityCalculatorDeviceKernels.cc
   ./src/dft/densityFirstOrderResponseCalculatorDeviceKernels.cc
   ./src/dft/solveVselfInBinsDeviceKernels.cc
-  ./src/dft/kineticEnergyDensityCalculatorDeviceKernels.cc
   ./src/linAlg/linearAlgebraOperationsDeviceKernels.cc
-  ./src/force/forceWfcContractionsDeviceKernels.cc
   ./utils/constraintMatrixInfoDeviceKernels.cc
   ./utils/DeviceAPICalls.cu.cc
   ./utils/BLASWrapperDevice.cc
@@ -254,6 +238,10 @@ SET(DEVICE_SRC
   ./utils/matrixFreeDeviceKernels.cc
   ./utils/FEBasisOperationsKernelsInternalDevice.cc
   ./src/atom/AtomicCenteredNonLocalOperatorKernelsDevice.cc
+  ./src/force/configurationalForceKernels.cc
+  ./src/dftOperator/KohnShamHamiltonianOperatorDeviceKernels.cc
+  ./src/excManager/excManagerDeviceKernels.cc
+  ./src/excManager/exchangeCorrelationFunctionalEvaluatorDevice.cc  
   )
 ELSEIF ("${GPU_LANG}" STREQUAL "hip")
 SET(DEVICE_SRC
@@ -263,9 +251,7 @@ SET(DEVICE_SRC
   ./src/dft/densityCalculatorDeviceKernels.cc
   ./src/dft/densityFirstOrderResponseCalculatorDeviceKernels.cc
   ./src/dft/solveVselfInBinsDeviceKernels.cc
-  ./src/dft/kineticEnergyDensityCalculatorDeviceKernels.cc
   ./src/linAlg/linearAlgebraOperationsDeviceKernels.cc
-  ./src/force/forceWfcContractionsDeviceKernels.cc
   ./utils/constraintMatrixInfoDeviceKernels.cc
   ./utils/DeviceAPICalls.hip.cc
   ./utils/BLASWrapperDevice.cc
@@ -274,6 +260,32 @@ SET(DEVICE_SRC
   ./utils/matrixFreeDeviceKernels.cc
   ./utils/FEBasisOperationsKernelsInternalDevice.cc
   ./src/atom/AtomicCenteredNonLocalOperatorKernelsDevice.cc
+  ./src/dftOperator/KohnShamHamiltonianOperatorDeviceKernels.cc
+  ./src/excManager/excManagerDeviceKernels.cc
+  ./src/excManager/exchangeCorrelationFunctionalEvaluatorDevice.cc
+  ./src/force/configurationalForceKernels.cc
+  )
+ELSEIF ("${GPU_LANG}" STREQUAL "sycl")
+SET(DEVICE_SRC
+  ./utils/MemoryTransferKernelsDevice.cc
+  ./utils/DeviceKernelsGeneric.cc
+  ./utils/DeviceDirectCCLWrapper.cc
+  ./src/dft/densityCalculatorDeviceKernels.cc
+  ./src/dft/densityFirstOrderResponseCalculatorDeviceKernels.cc
+  ./src/dft/solveVselfInBinsDeviceKernels.cc
+  ./src/linAlg/linearAlgebraOperationsDeviceKernels.cc
+  ./utils/constraintMatrixInfoDeviceKernels.cc
+  ./utils/DeviceAPICalls.sycl.cc
+  ./utils/BLASWrapperDevice.cc
+  ./utils/MPICommunicatorP2PKernelsDevice.cc
+  ./src/solvers/linearSolverCGDeviceKernels.cc
+  ./utils/matrixFreeDeviceKernels.cc
+  ./utils/FEBasisOperationsKernelsInternalDevice.cc
+  ./src/atom/AtomicCenteredNonLocalOperatorKernelsDevice.cc
+  ./src/dftOperator/KohnShamHamiltonianOperatorDeviceKernels.cc
+  ./src/excManager/excManagerDeviceKernels.cc
+  ./src/excManager/exchangeCorrelationFunctionalEvaluatorDevice.cc  
+  ./src/force/configurationalForceKernels.cc
   )
 
 ENDIF()
@@ -289,6 +301,8 @@ IF (WITH_GPU)
        ELSEIF ("${GPU_VENDOR}" STREQUAL "nvidia")
           ADD_DEFINITIONS(-D__HIP_PLATFORM_NVIDIA__)
        ENDIF()
+    ELSEIF ("${GPU_LANG}" STREQUAL "sycl")
+      set_source_files_properties(${DEVICE_SRC} PROPERTIES COMPILE_FLAGS ${CMAKE_SYCL_FLAGS})
     ENDIF()
 ENDIF()
 IF (WITH_GPU)
@@ -380,6 +394,9 @@ IF (WITH_GPU)
     ADD_DEFINITIONS(-DDFTFE_WITH_DEVICE_NVIDIA)
   ELSEIF ("${GPU_VENDOR}" STREQUAL "amd")
     ADD_DEFINITIONS(-DDFTFE_WITH_DEVICE_AMD)
+  ELSEIF ("${GPU_VENDOR}" STREQUAL "intel")
+    ADD_DEFINITIONS(-DDFTFE_WITH_DEVICE_INTEL)
+    ADD_DEFINITIONS(-DDFTFE_WITH_DEVICE_MKL)
   ENDIF()
 
   IF ("${GPU_LANG}" STREQUAL "cuda")
@@ -394,6 +411,34 @@ IF (WITH_GPU)
     ADD_DEFINITIONS(-DDFTFE_WITH_DEVICE_LANG_HIP)
     find_package(hipblas)
     target_link_libraries(${TARGETLIB} PUBLIC roc::hipblas)
+  ELSEIF ("${GPU_LANG}" STREQUAL "sycl")
+    MESSAGE(STATUS "DFTFE with GPU LANG SYCL")
+    ADD_DEFINITIONS(-DDFTFE_WITH_DEVICE_LANG_SYCL)
+    find_program(MPI_BASE_CXX_COMPILER "icpx")
+    get_filename_component(_REALPATH_SYCL_COMPILER "${MPI_BASE_CXX_COMPILER}" REALPATH)
+    get_filename_component(SYCL_BIN_DIR "${_REALPATH_SYCL_COMPILER}" DIRECTORY)
+    get_filename_component(SYCL_PACKAGE_DIR "${SYCL_BIN_DIR}" DIRECTORY CACHE)
+    find_file(SYCL_INCLUDE_DIR
+    NAMES
+    include
+    HINTS
+    ${SYCL_PACKAGE_DIR}
+    NO_DEFAULT_PATH)
+    target_include_directories(${TARGETLIB} PUBLIC ${SYCL_INCLUDE_DIR})
+    target_include_directories(${TARGETLIB} PUBLIC ${SYCL_INCLUDE_DIR}/sycl)
+    set(MKL_INTERFACE lp64)
+    set(ENABLE_SCALAPACK ON)
+    set(MKL_MPI mpich)
+    find_PACKAGE(IntelSYCL REQUIRED)
+    find_package(MKL REQUIRED)
+    target_link_libraries(${TARGETLIB} PUBLIC MKL::MKL)
+    get_target_property(MKL_SYCL_INCLUDE_DIRS MKL::MKL_SYCL INTERFACE_INCLUDE_DIRECTORIES)
+    target_include_directories(${TARGETLIB} PUBLIC ${MKL_SYCL_INCLUDE_DIRS})
+    get_target_property(mkl_sycl_includes MKL::MKL_SYCL INTERFACE_INCLUDE_DIRECTORIES)
+    target_include_directories(${TARGETLIB} PUBLIC ${mkl_sycl_includes})
+    get_target_property(mkl_sycl_libs MKL::MKL_SYCL INTERFACE_LINK_LIBRARIES)
+    target_link_libraries(${TARGETLIB} PUBLIC ${mkl_sycl_libs})
+    set_target_properties(${TARGETLIB} PROPERTIES LINK_FLAGS ${CMAKE_SYCL_FLAGS})
   ENDIF()
   IF (WITH_GPU_AWARE_MPI)
     ADD_DEFINITIONS(-DDFTFE_WITH_DEVICE_AWARE_MPI)

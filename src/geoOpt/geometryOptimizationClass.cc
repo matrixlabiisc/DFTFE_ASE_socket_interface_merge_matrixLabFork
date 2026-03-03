@@ -267,13 +267,19 @@ namespace dftfe
         if (d_cycle == 0 && !d_isRestart)
           {
             d_dftPtr->solve(true, true, false);
+            if (d_dftPtr->getParametersObject()
+                  .writeStructreEnergyForcesFileForPostProcess)
+              {
+                std::string fileName = "structureEnergyForcesGSData_0.txt";
+                d_dftPtr->writeStructureEnergyForcesDataPostProcess(fileName);
+              }
           }
 
         if (d_status == 0)
           {
             if (d_dftPtr->getParametersObject().verbosity >= 1)
               pcout << "Starting ion optimization" << std::endl;
-            d_geoOptIonPtr->init(restartPath);
+            d_geoOptIonPtr->init(restartPath, d_cycle);
             dftfe::Int geoOptStatus = d_geoOptIonPtr->run();
             if (d_optMode == 0)
               {
@@ -295,13 +301,16 @@ namespace dftfe
                                       d_mpiCommParent);
         if (d_optMode == 2 && d_status == 1)
           {
-            d_dftPtr->trivialSolveForStress();
+            if (!d_isRestart)
+              d_dftPtr->trivialSolveForStress();
+            else
+              d_dftPtr->solve(false, true);
           }
         if (d_status == 1)
           {
             if (d_dftPtr->getParametersObject().verbosity >= 1)
               pcout << "Starting cell optimization" << std::endl;
-            d_geoOptCellPtr->init(restartPath);
+            d_geoOptCellPtr->init(restartPath, d_cycle);
             dftfe::Int geoOptStatus = d_geoOptCellPtr->run();
             if (d_optMode == 1)
               {
@@ -317,6 +326,7 @@ namespace dftfe
                 ++d_cycle;
               }
           }
+        d_isRestart = false;
       }
   }
 

@@ -10,12 +10,16 @@ namespace dftfe
   class excTauMGGAClass : public ExcSSDFunctionalBaseClass<memorySpace>
   {
   public:
-    excTauMGGAClass(std::shared_ptr<xc_func_type> funcXPtr,
-                    std::shared_ptr<xc_func_type> funcCPtr);
+    excTauMGGAClass(std::shared_ptr<xc_func_type> &funcXPtr,
+                    std::shared_ptr<xc_func_type> &funcCPtr,
+                    const bool                     useLibXC,
+                    std::string                    XCType);
 
-    excTauMGGAClass(std::shared_ptr<xc_func_type> funcXPtr,
-                    std::shared_ptr<xc_func_type> funcCPtr,
-                    std::string                   modelXCInputFile);
+    excTauMGGAClass(std::shared_ptr<xc_func_type> &funcXPtr,
+                    std::shared_ptr<xc_func_type> &funcCPtr,
+                    std::string                    modelXCInputFile,
+                    const bool                     useLibXC,
+                    std::string                    XCType);
 
     ~excTauMGGAClass();
 
@@ -23,9 +27,13 @@ namespace dftfe
     computeRhoTauDependentXCData(
       AuxDensityMatrix<memorySpace>             &auxDensityMatrix,
       const std::pair<dftfe::uInt, dftfe::uInt> &quadIndexRange,
-      std::unordered_map<xcRemainderOutputDataAttributes, std::vector<double>>
+      std::unordered_map<
+        xcRemainderOutputDataAttributes,
+        dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>>
         &xDataOut,
-      std::unordered_map<xcRemainderOutputDataAttributes, std::vector<double>>
+      std::unordered_map<
+        xcRemainderOutputDataAttributes,
+        dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>>
         &cDataout) const override;
 
     void
@@ -85,6 +93,15 @@ namespace dftfe
   private:
     std::shared_ptr<xc_func_type> d_funcXPtr;
     std::shared_ptr<xc_func_type> d_funcCPtr;
+    // Flag to indicate whether to use libxc or not
+    bool        d_useLibxc;
+    std::string d_XCType;
+    bool        d_tauNeededX;
+    bool        d_tauNeededC;
+    // These extra flags are required for internal evaluation of exc related
+    // values. These checks are for enforcing Fermi Hole curvature.
+    bool d_enforceFHCX;
+    bool d_enforceFHCC;
   };
 
 } // namespace dftfe

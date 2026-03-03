@@ -265,8 +265,6 @@ namespace dftfe
     if (d_rhoValuesPtr)
       {
         FEEvaluationWrapperClass<1> fe_eval_density(
-          FEOrderElectro,
-          -1,
           *d_matrixFreeDataPtr,
           d_matrixFreeVectorComponent,
           d_matrixFreeQuadratureComponentRhsDensity);
@@ -628,9 +626,8 @@ namespace dftfe
     dealii::IndexSet locallyOwnedElements =
       d_meanValueConstraintVec.locally_owned_elements();
 
-    dealii::IndexSet locallyRelevantElements;
-    dealii::DoFTools::extract_locally_relevant_dofs(dofHandler,
-                                                    locallyRelevantElements);
+    dealii::IndexSet locallyRelevantElements =
+      d_constraintMatrixPtr->get_local_lines();
 
     // pick mean value constrained node such that it is not part
     // of periodic and hanging node constraint equations (both slave and master

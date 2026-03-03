@@ -78,8 +78,10 @@ namespace dftfe
         // Note that on all the inactive processs the resulting MPI_Comm
         // processGridCommunicatorActive will be MPI_COMM_NULL.
         // MPI_Comm processGridCommunicatorActive;
-        ierr = dealii::Utilities::MPI::create_group(
-          mpi_communicator, active_group, 50, &processGridCommunicatorActive);
+        ierr = MPI_Comm_create_group(mpi_communicator,
+                                     active_group,
+                                     50,
+                                     &processGridCommunicatorActive);
         AssertThrowMPI(ierr);
 
         ierr = MPI_Group_free(&all_group);
@@ -155,12 +157,9 @@ namespace dftfe
             AssertThrow(error == ELPA_OK,
                         dealii::ExcMessage("DFT-FE Error: ELPA Error."));
 
-            if ((processGrid->get_process_grid_rows()) * blockSize > na)
-              {
-                elpa_set(elpaHandle, "cannon_for_generalized", 0, &error);
-                AssertThrow(error == ELPA_OK,
-                            dealii::ExcMessage("DFT-FE Error: ELPA Error."));
-              }
+            elpa_set(elpaHandle, "cannon_for_generalized", 0, &error);
+            AssertThrow(error == ELPA_OK,
+                        dealii::ExcMessage("DFT-FE Error: ELPA Error."));
 
             /* Setup */
             AssertThrow(elpa_setup(elpaHandle) == ELPA_OK,

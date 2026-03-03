@@ -933,9 +933,6 @@ namespace dftfe
                                              d_dftfeParamsPtr->nbandGrps,
                                              d_dftfeParamsPtr->verbosity);
 
-        std::srand(dealii::Utilities::MPI::this_mpi_process(
-          bandGroupsPool.get_intrapool_comm()));
-
         if (d_dftfeParamsPtr->verbosity >= 1)
           {
             dealii::ConditionalOStream pcout(
@@ -1066,17 +1063,6 @@ namespace dftfe
     return std::make_tuple(d_dftfeBasePtr->getFreeEnergy(),
                            std::get<0>(t),
                            std::get<1>(t));
-  }
-
-  void
-  dftfeWrapper::computeStress()
-  {
-    AssertThrow(
-      d_mpi_comm_parent != MPI_COMM_NULL,
-      dealii::ExcMessage(
-        "DFT-FE Error: dftfeWrapper cannot be used on MPI_COMM_NULL."));
-
-    d_dftfeBasePtr->computeStress();
   }
 
   double
@@ -1307,7 +1293,4 @@ namespace dftfe
         "DFT-FE Error: dftfeWrapper cannot be used on MPI_COMM_NULL."));
     d_dftfeBasePtr->writeDomainAndAtomCoordinates(Path);
   }
-
-
-
 } // namespace dftfe

@@ -78,7 +78,10 @@ namespace dftfe
     virtual const std::shared_ptr<AtomicCenteredNonLocalOperator<
       typename dftfe::dataTypes::singlePrecType<ValueType>::type,
       memorySpace>>
-    getNonLocalOperatorSinglePrec();
+    getNonLocalOperatorSinglePrec() = 0;
+
+    virtual const std::map<dftfe::uInt, dftfe::uInt> &
+    getPSPAtomIdToGlobalIdMap() = 0;
 
 
 

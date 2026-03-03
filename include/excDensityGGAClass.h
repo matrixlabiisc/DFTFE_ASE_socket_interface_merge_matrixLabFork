@@ -26,13 +26,17 @@ namespace dftfe
   class excDensityGGAClass : public ExcSSDFunctionalBaseClass<memorySpace>
   {
   public:
-    excDensityGGAClass(std::shared_ptr<xc_func_type> funcXPtr,
-                       std::shared_ptr<xc_func_type> funcCPtr);
+    excDensityGGAClass(std::shared_ptr<xc_func_type> &funcXPtr,
+                       std::shared_ptr<xc_func_type> &funcCPtr,
+                       const bool                     useLibXC,
+                       std::string                    XCType);
 
 
-    excDensityGGAClass(std::shared_ptr<xc_func_type> funcXPtr,
-                       std::shared_ptr<xc_func_type> funcCPtr,
-                       std::string                   modelXCInputFile);
+    excDensityGGAClass(std::shared_ptr<xc_func_type> &funcXPtr,
+                       std::shared_ptr<xc_func_type> &funcCPtr,
+                       std::string                    modelXCInputFile,
+                       const bool                     useLibXC,
+                       std::string                    XCType);
 
 
     ~excDensityGGAClass();
@@ -43,9 +47,13 @@ namespace dftfe
     computeRhoTauDependentXCData(
       AuxDensityMatrix<memorySpace>             &auxDensityMatrix,
       const std::pair<dftfe::uInt, dftfe::uInt> &quadIndexRange,
-      std::unordered_map<xcRemainderOutputDataAttributes, std::vector<double>>
+      std::unordered_map<
+        xcRemainderOutputDataAttributes,
+        dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>>
         &xDataOut,
-      std::unordered_map<xcRemainderOutputDataAttributes, std::vector<double>>
+      std::unordered_map<
+        xcRemainderOutputDataAttributes,
+        dftfe::utils::MemoryStorage<double, dftfe::utils::MemorySpace::HOST>>
         &cDataout) const override;
     void
     checkInputOutputDataAttributesConsistency(
@@ -105,6 +113,8 @@ namespace dftfe
     std::shared_ptr<xc_func_type> d_funcCPtr;
     std::vector<double>           d_spacingFDStencil;
     dftfe::uInt                   d_vxcDivergenceTermFDStencilSize;
+    bool        d_useLibXC; ///< Flag to indicate whether to use libxc or not
+    std::string d_XCType;
   };
 } // namespace dftfe
 #endif // DFTFE_EXCDENSITYGGACLASS_H

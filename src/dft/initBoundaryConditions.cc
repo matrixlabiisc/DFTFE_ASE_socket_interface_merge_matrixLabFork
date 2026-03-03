@@ -144,14 +144,14 @@ namespace dftfe
       dftUtils::printCurrentMemoryUsage(mpi_communicator,
                                         "Dofs distributed again");
     d_supportPoints.clear();
-    dealii::DoFTools::map_dofs_to_support_points(dealii::MappingQ1<3, 3>(),
-                                                 dofHandler,
-                                                 d_supportPoints);
+    d_supportPoints =
+      dealii::DoFTools::map_dofs_to_support_points(dealii::MappingQ1<3, 3>(),
+                                                   dofHandler);
 
     d_supportPointsEigen.clear();
-    dealii::DoFTools::map_dofs_to_support_points(dealii::MappingQ1<3, 3>(),
-                                                 dofHandlerEigen,
-                                                 d_supportPointsEigen);
+    d_supportPointsEigen =
+      dealii::DoFTools::map_dofs_to_support_points(dealii::MappingQ1<3, 3>(),
+                                                   dofHandlerEigen);
 
     MPI_Barrier(d_mpiCommParent);
     init_dofhandlerobjs = MPI_Wtime() - init_dofhandlerobjs;
@@ -238,30 +238,6 @@ namespace dftfe
     d_lpspQuadratureId            = 3;
     d_feOrderPlusOneQuadratureId  = 4;
     d_sparsityPatternQuadratureId = 5;
-
-    double init_force;
-    MPI_Barrier(d_mpiCommParent);
-    init_force = MPI_Wtime();
-    //
-    //
-    //
-    forcePtr->initMoved(dofHandlerVector, d_constraintsVector, false);
-    d_forceDofHandlerIndex = d_constraintsVector.size() - 1;
-    /*
-    forcePtr->initMoved(dofHandlerVector,
-        d_constraintsVector,
-        true);
-    */
-
-    if (d_dftParamsPtr->verbosity >= 4)
-      dftUtils::printCurrentMemoryUsage(mpi_communicator,
-                                        "Called force init moved");
-
-    MPI_Barrier(d_mpiCommParent);
-    init_force = MPI_Wtime() - init_force;
-    if (d_dftParamsPtr->verbosity >= 4)
-      pcout << "initBoundaryConditions: Time taken for force init moved: "
-            << init_force << std::endl;
 
 
     double init_mf;
