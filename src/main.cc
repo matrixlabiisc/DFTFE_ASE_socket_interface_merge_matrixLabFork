@@ -98,30 +98,35 @@ main(int argc, char *argv[])
   // Mehul: Check for socket argument first
   // Mehul: Added this block to support socket mode
   std::string socket_host = "";
-  int socket_port = 0;
-  for (int i = 1; i < argc; ++i) {
+  int         socket_port = 0;
+  for (int i = 1; i < argc; ++i)
+    {
       std::string arg = argv[i];
-      if (arg == "--socket" && i + 1 < argc) {
-          std::string val = argv[i+1];
-          size_t colon = val.find(':');
-          if (colon != std::string::npos) {
+      if (arg == "--socket" && i + 1 < argc)
+        {
+          std::string val   = argv[i + 1];
+          size_t      colon = val.find(':');
+          if (colon != std::string::npos)
+            {
               socket_host = val.substr(0, colon);
               socket_port = std::stoi(val.substr(colon + 1));
-          }
-      }
-  }
+            }
+        }
+    }
 
   if (!socket_host.empty())
     {
-       if (world_rank == 0) std::cout << "Starting DFT-FE in Socket Mode connecting to " << socket_host << ":" << socket_port << std::endl;
-       // SocketDriver no longer needs parameter_file
-       dftfe::SocketDriver driver(socket_host, socket_port, MPI_COMM_WORLD);
-       driver.run();
-       
-       dftfe::dftfeWrapper::globalHandlesFinalize();
-       MPI_Barrier(MPI_COMM_WORLD);
-       MPI_Finalize();
-       return 0;
+      if (world_rank == 0)
+        std::cout << "Starting DFT-FE in Socket Mode connecting to "
+                  << socket_host << ":" << socket_port << std::endl;
+      // SocketDriver no longer needs parameter_file
+      dftfe::SocketDriver driver(socket_host, socket_port, MPI_COMM_WORLD);
+      driver.run();
+
+      dftfe::dftfeWrapper::globalHandlesFinalize();
+      MPI_Barrier(MPI_COMM_WORLD);
+      MPI_Finalize();
+      return 0;
     }
 
   // deal.II tests expect parameter file as a first (!) argument

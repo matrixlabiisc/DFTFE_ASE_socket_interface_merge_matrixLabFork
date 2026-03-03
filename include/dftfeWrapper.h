@@ -225,21 +225,21 @@ namespace dftfe
            const dftfe::uInt              numKohnSham            = 0,
            const std::string              orthogonalizationType  = "Auto",
            // New parameters
-           const dftfe::uInt              wfcBlockSize           = 0,
-           const dftfe::uInt              chebyWfcBlockSize      = 0,
-           const bool                     smearedNuclearCharges  = true,
-           const bool                     useGroupSymmetry       = false,
-           const bool                     useTimeReversalSymmetry = false,
-           const dftfe::Int               mixingHistory          = 10,
-           const dftfe::Int               maxSCFIterations       = 200,
-           const dftfe::Int               dispersionCorrectionType = 0,
-           const bool                     pseudopotentialCalculation = true,
-           
-           const dftfe::Int               verbosity              = -1,
-           const bool setDeviceToMPITaskBindingInternally        = false,
-           const bool                     keepScratch            = false, // New parameter
-           const bool                     computeIonForces       = true,  // New parameter
-           const bool                     computeStress          = false); // New parameter
+           const dftfe::uInt wfcBlockSize               = 0,
+           const dftfe::uInt chebyWfcBlockSize          = 0,
+           const bool        smearedNuclearCharges      = true,
+           const bool        useGroupSymmetry           = false,
+           const bool        useTimeReversalSymmetry    = false,
+           const dftfe::Int  mixingHistory              = 10,
+           const dftfe::Int  maxSCFIterations           = 200,
+           const dftfe::Int  dispersionCorrectionType   = 0,
+           const bool        pseudopotentialCalculation = true,
+
+           const dftfe::Int verbosity                           = -1,
+           const bool       setDeviceToMPITaskBindingInternally = false,
+           const bool       keepScratch      = false, // New parameter
+           const bool       computeIonForces = true,  // New parameter
+           const bool       computeStress    = false);         // New parameter
 
     void
     clear();
