@@ -861,7 +861,7 @@ namespace dftfe
         d_dftfeParamsPtr->keepScratchFolder = keepScratch;
         d_dftfeParamsPtr->parse_parameters(parameter_file_path,
                                            d_mpi_comm_parent,
-                                           false,
+                                           (verbosity >= 1),
                                            "GS");
 #ifdef DFTFE_WITH_DEVICE
         d_dftfeParamsPtr->useDevice = useDevice;

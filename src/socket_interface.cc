@@ -9,6 +9,7 @@
 #include <netdb.h>
 #include <cmath>
 #include <iomanip>
+#include <git_info.h>
 
 namespace dftfe
 {
@@ -579,6 +580,111 @@ namespace dftfe
         if (!initialized)
           {
             // First run: Initialize DFT-FE with explicit data
+            if (rank == 0 && verbosity >= 1)
+              {
+                  std::cout
+                    << "=========================================================================================================="
+                    << std::endl;
+                  std::cout
+                    << "=========================================================================================================="
+                    << std::endl;
+                  std::cout
+                    << "			Welcome to the ASE interface of Open Source program DFT-FE version	1.1.0-pre		        "
+                    << std::endl;
+                  std::cout
+                    << "This is a python interface for C++ code for materials modeling from first principles using Kohn-Sham density functional theory."
+                    << std::endl;
+                  std::cout
+                    << "DFT-FE is a real-space code for periodic, semi-periodic and non-periodic pseudopotential"
+                    << std::endl;
+                  std::cout
+                    << "and all-electron calculations, and is based on adaptive finite-element discretization."
+                    << std::endl;
+                  std::cout
+                    << "For further details, and citing, please refer to our website: https://sites.google.com/umich.edu/dftfe"
+                    << std::endl;
+                  std::cout
+                    << "=========================================================================================================="
+                    << std::endl;
+                  std::cout
+                    << " DFT-FE Mentors and Development leads (alphabetically) :									"
+                    << std::endl;
+                  std::cout << "														" << std::endl;
+                  std::cout << " Sambit Das               - University of Michigan, USA"
+                            << std::endl;
+                  std::cout << " Vikram Gavini            - University of Michigan, USA"
+                            << std::endl;
+                  std::cout
+                    << " Phani Motamarri          - Indian Institute of Science, India"
+                    << std::endl;
+                  std::cout
+                    << " (A complete list of the many authors that have contributed to DFT-FE can be found in the authors file)"
+                    << std::endl;
+                  std::cout
+// Adding Mehul as the lead for ASE interface
+                    << "=========================================================================================================="
+                    << std::endl;
+                  std::cout
+                    << " ASE interface lead:                                                                                      "
+                    << std::endl;
+                  std::cout
+                    << " Mehul Darak            - Indian Institute of Science, Bangalore"
+                    << std::endl;
+                  std::cout
+                    << "=========================================================================================================="
+                    << std::endl;
+                  std::cout
+                    << " 	     Copyright (c) 2017-2025 The Regents of the University of Michigan and DFT-FE authors         "
+                    << std::endl;
+                  std::cout
+                    << " 			DFT-FE is published under [LGPL v2.1 or newer] 				"
+                    << std::endl;
+                  std::cout
+                    << "=========================================================================================================="
+                    << std::endl;
+                  std::cout
+                    << "=========================================================================================================="
+                    << std::endl;
+                  std::cout << " DFT-FE branch: " << GIT_BRANCH
+                            << ", commit: " << GIT_COMMIT << std::endl;
+                  std::cout << " compiled ";
+            #  ifdef DFTFE_WITH_DEVICE
+                  std::cout << "with GPU support, ";
+            #    ifdef DFTFE_WITH_DEVICE_LANG_CUDA
+                  std::cout << "using CUDA, ";
+            #    elif DFTFE_WITH_DEVICE_LANG_HIP
+                  std::cout << "using HIP, ";
+            #    endif
+            #    if defined(DFTFE_WITH_DEVICE_AWARE_MPI)
+                  std::cout << "with device-aware MPI support, ";
+            #    endif
+            #    if defined(DFTFE_WITH_CUDA_NCCL)
+                  std::cout << "with NCCL support, ";
+            #    endif
+            #    if defined(DFTFE_WITH_HIP_RCCL)
+                  std::cout << "with RCCL support, ";
+            #    endif
+            #  else
+                  std::cout << "without GPU support, ";
+            #  endif
+            #  ifdef _OPENMP
+                  std::cout << "with OpenMP support, ";
+            #  endif
+            #  ifdef DFTFE_WITH_64BIT_INT
+                  std::cout << "with 64 bit integers, ";
+            #  else
+                  std::cout << "with 32 bit integers, ";
+            #  endif
+            #  ifdef DFTFE_WITH_HIGHERQUAD_PSP
+                  std::cout << "and with HIGHERQUAD_PSP" << std::endl;
+            #  else
+                  std::cout << "and without HIGHERQUAD_PSP" << std::endl;
+            #  endif
+                  std::cout
+                    << "=========================================================================================================="
+                    << std::endl;
+              }
+
             if (rank == 0)
               std::cout
                 << "SocketDriver: Initializing dftfeWrapper with explicit data..."
