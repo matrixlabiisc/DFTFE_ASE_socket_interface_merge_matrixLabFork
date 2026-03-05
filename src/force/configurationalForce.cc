@@ -606,7 +606,7 @@ namespace dftfe
             sumAbsValForceComp += std::abs(d_forceTotal[3 * i + iDim]);
             sumForce[iDim] += d_forceTotal[3 * i + iDim];
           }
-        Assert(absForce >= 0., ExcInternalError());
+        Assert(absForce >= 0., dftUtils::ExcInternalError());
         absForce = std::sqrt(absForce);
         if (absForce > maxForce)
           {

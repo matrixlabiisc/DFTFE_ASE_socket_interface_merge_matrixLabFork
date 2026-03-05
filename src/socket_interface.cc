@@ -615,7 +615,7 @@ namespace dftfe
                        dispersion_correction_type,
                        pseudopotential_calculation,
                        verbosity,
-                       false,        // setDeviceToMPITaskBindingInternally
+                       use_device,   // setDeviceToMPITaskBindingInternally
                        keep_scratch, // keepScratch
                        compute_forces,
                        compute_stress);

@@ -1,0 +1,71 @@
+set VERBOSITY = 0
+set REPRODUCIBLE OUTPUT = true
+set SOLVER MODE = GEOOPT
+subsection Geometry
+  set NATOMS=2
+  set NATOM TYPES=1
+  set ATOMIC COORDINATES FILE = /home/pa01/Mehul/DFTFE/tests/dft/pseudopotential/real/nitrogenMolecule_coordinates2.inp
+  set DOMAIN VECTORS FILE = /home/pa01/Mehul/DFTFE/tests/dft/pseudopotential/real/nitrogenMolecule_domainVectors.inp
+  subsection Optimization
+    set OPTIMIZATION MODE = ION
+    set ION OPT SOLVER    = CGPRP
+    set FORCE TOL=4e-2
+    set ION RELAX FLAGS FILE =/home/pa01/Mehul/DFTFE/tests/dft/pseudopotential/real/nitrogenMolecule_relaxationFlags.inp
+    set REUSE WFC=true
+    set REUSE DENSITY=2
+  end
+end
+
+subsection Boundary conditions
+  set SMEARED NUCLEAR CHARGES=false
+  set FLOATING NUCLEAR CHARGES=false
+  set PERIODIC1                       = false
+  set PERIODIC2                       = false
+  set PERIODIC3                       = false
+  set SELF POTENTIAL RADIUS = 4.0
+  set CONSTRAINTS PARALLEL CHECK=true
+end
+
+subsection Finite element mesh parameters
+  set POLYNOMIAL ORDER=3
+  subsection Auto mesh generation parameters
+    set AUTO ADAPT BASE MESH SIZE=false
+
+    set MESH SIZE AROUND ATOM  = 0.5
+    set BASE MESH SIZE = 13.0
+    set ATOM BALL RADIUS = 2.0
+    set MESH SIZE AT ATOM = 0.5
+  end
+end
+
+subsection DFT functional parameters
+  set EXCHANGE CORRELATION TYPE = GGA-PBE
+  set PSEUDOPOTENTIAL CALCULATION = true
+  set PSEUDO TESTS FLAG = true
+  set PSEUDOPOTENTIAL FILE NAMES LIST = /home/pa01/Mehul/DFTFE/tests/dft/pseudopotential/real/pseudoNGGA.inp
+end
+
+subsection Poisson problem parameters
+  set MAXIMUM ITERATIONS = 10000
+  set TOLERANCE          = 1e-10
+end
+
+
+subsection SCF parameters
+   set COMPUTE ENERGY EACH ITER=false
+
+  set MIXING HISTORY   = 70
+  set MIXING PARAMETER = 0.5
+  set MAXIMUM ITERATIONS               = 40
+  set TEMPERATURE                      = 500
+  set TOLERANCE                        = 1e-5
+  
+  set STARTING WFC=ATOMIC
+  subsection Eigen-solver parameters
+      set NUMBER OF KOHN-SHAM WAVEFUNCTIONS = 10
+      set ORTHOGONALIZATION TYPE=CGS
+      set CHEBYSHEV POLYNOMIAL DEGREE = 30
+      set CHEBYSHEV FILTER TOLERANCE=1e-4
+      set USE ELPA=false
+  end
+end

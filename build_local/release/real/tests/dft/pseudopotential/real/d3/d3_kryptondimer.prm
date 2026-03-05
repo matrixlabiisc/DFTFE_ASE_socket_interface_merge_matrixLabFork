@@ -1,0 +1,48 @@
+set VERBOSITY = 0
+set REPRODUCIBLE OUTPUT = true
+set SOLVER MODE = GEOOPT
+
+subsection Geometry
+  set NATOMS=2
+  set NATOM TYPES=1
+  set ATOMIC COORDINATES FILE      = /home/pa01/Mehul/DFTFE/tests/dft/pseudopotential/real/d3/kryptonDimer_coordinates.inp
+  set DOMAIN VECTORS FILE =  /home/pa01/Mehul/DFTFE/tests/dft/pseudopotential/real/d3/kryptonDimer_domainVectors.inp
+  subsection Optimization
+    set FORCE TOL            = 1e-3
+    set OPTIMIZATION MODE    = ION
+    set ION FORCE            = true
+    set ION RELAX FLAGS FILE = /home/pa01/Mehul/DFTFE/tests/dft/pseudopotential/real/d3/kryptonDimer_relaxationFlags.inp
+  end
+end
+
+subsection Boundary conditions
+  set PERIODIC1                       = false
+  set PERIODIC2                       = false
+  set PERIODIC3                       = false
+end
+
+subsection DFT functional parameters
+  set EXCHANGE CORRELATION TYPE = GGA-PBE
+  set PSEUDOPOTENTIAL CALCULATION = true
+  set PSEUDOPOTENTIAL FILE NAMES LIST = /home/pa01/Mehul/DFTFE/tests/dft/pseudopotential/real/d3/pseudoKr.inp
+  set PSEUDO TESTS FLAG = true
+  subsection Dispersion Correction
+     set DISPERSION CORRECTION TYPE = 1
+  end
+end
+subsection SCF parameters
+  set TEMPERATURE                      = 500
+  set STARTING WFC=ATOMIC
+end
+
+subsection Finite element mesh parameters
+  set POLYNOMIAL ORDER=3
+  subsection Auto mesh generation parameters
+    set AUTO ADAPT BASE MESH SIZE=false
+    set MESH SIZE AROUND ATOM  = 0.7
+    set BASE MESH SIZE = 10.0
+    set ATOM BALL RADIUS = 2.0
+    set MESH SIZE AT ATOM = 0.7
+  end
+end
+

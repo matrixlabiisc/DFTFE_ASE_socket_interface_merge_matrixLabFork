@@ -12,7 +12,7 @@ if(NOT DEFINED CMAKE_INSTALL_CONFIG_NAME)
     string(REGEX REPLACE "^[^A-Za-z0-9_]+" ""
            CMAKE_INSTALL_CONFIG_NAME "${BUILD_TYPE}")
   else()
-    set(CMAKE_INSTALL_CONFIG_NAME "Release")
+    set(CMAKE_INSTALL_CONFIG_NAME "")
   endif()
   message(STATUS "Install configuration: \"${CMAKE_INSTALL_CONFIG_NAME}\"")
 endif()
@@ -43,9 +43,19 @@ if(NOT DEFINED CMAKE_OBJDUMP)
 endif()
 
 if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT)
-  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/lib" TYPE SHARED_LIBRARY FILES "/home/pa01/Mehul/DFTFE/build_local/complex/CMakeFiles/CMakeRelink.dir/libdftfeComplex.so")
   if(EXISTS "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/lib/libdftfeComplex.so" AND
      NOT IS_SYMLINK "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/lib/libdftfeComplex.so")
+    file(RPATH_CHECK
+         FILE "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/lib/libdftfeComplex.so"
+         RPATH "/apps/softwares/spack/opt/spack/linux-ubuntu24.04-cascadelake/gcc-13.3.0/cuda-12.6.3-wdrnyla44db6bmihvkefukg5f6axzprg/targets/x86_64-linux/lib:/storage/dftfeDependenciesNoMKL/dealii/installComplex/lib:/storage/dftfeDependenciesNoMKL/alglib/install/lib:/storage/dftfeDependenciesNoMKL/libxc/install/lib:/storage/dftfeDependenciesNoMKL/spglib/install/lib:/apps/softwares/spack/opt/spack/linux-ubuntu24.04-cascadelake/gcc-13.3.0/nccl-2.23.4-1-xyspmp23glxb4slgne4xpemahjrkuyrj/lib:/apps/softwares/spack/opt/spack/linux-ubuntu24.04-cascadelake/gcc-13.3.0/zlib-ng-2.2.3-nqbp3zzmzdgtwk34m3miae24str5vtnj/lib:/storage/dftfeDependenciesNoMKL/boost/install/lib:/storage/dftfeDependenciesNoMKL/kokkos/install/lib:/storage/dftfeDependenciesNoMKL/p4est/install/lib:/storage/dftfeDependenciesNoMKL/slepc/installComplex/lib:/storage/dftfeDependenciesNoMKL/petsc/installComplex/lib:/apps/softwares/spack/opt/spack/linux-ubuntu24.04-cascadelake/gcc-13.3.0/openmpi-5.0.6-ytficipzlncogz4ktqkzkwszqj7jw2ne/lib:/storage/dftfeDependenciesNoMKL/dftd/install/lib:/storage/dftfeDependenciesNoMKL/elpa/install/lib")
+  endif()
+  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/lib" TYPE SHARED_LIBRARY FILES "/home/pa01/Mehul/DFTFE/build_local/complex/libdftfeComplex.so")
+  if(EXISTS "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/lib/libdftfeComplex.so" AND
+     NOT IS_SYMLINK "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/lib/libdftfeComplex.so")
+    file(RPATH_CHANGE
+         FILE "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/lib/libdftfeComplex.so"
+         OLD_RPATH "/apps/softwares/spack/opt/spack/linux-ubuntu24.04-cascadelake/gcc-13.3.0/cuda-12.6.3-wdrnyla44db6bmihvkefukg5f6axzprg/targets/x86_64-linux/lib:/storage/dftfeDependenciesNoMKL/dealii/installComplex/lib:/storage/dftfeDependenciesNoMKL/alglib/install/lib:/storage/dftfeDependenciesNoMKL/libxc/install/lib:/storage/dftfeDependenciesNoMKL/spglib/install/lib:/apps/softwares/spack/opt/spack/linux-ubuntu24.04-cascadelake/gcc-13.3.0/nccl-2.23.4-1-xyspmp23glxb4slgne4xpemahjrkuyrj/lib:/apps/softwares/spack/opt/spack/linux-ubuntu24.04-cascadelake/gcc-13.3.0/zlib-ng-2.2.3-nqbp3zzmzdgtwk34m3miae24str5vtnj/lib:/storage/dftfeDependenciesNoMKL/boost/install/lib:/storage/dftfeDependenciesNoMKL/kokkos/install/lib:/storage/dftfeDependenciesNoMKL/p4est/install/lib:/storage/dftfeDependenciesNoMKL/slepc/installComplex/lib:/storage/dftfeDependenciesNoMKL/petsc/installComplex/lib:/apps/softwares/spack/opt/spack/linux-ubuntu24.04-cascadelake/gcc-13.3.0/openmpi-5.0.6-ytficipzlncogz4ktqkzkwszqj7jw2ne/lib:/storage/dftfeDependenciesNoMKL/dftd/install/lib:/storage/dftfeDependenciesNoMKL/elpa/install/lib:"
+         NEW_RPATH "/apps/softwares/spack/opt/spack/linux-ubuntu24.04-cascadelake/gcc-13.3.0/cuda-12.6.3-wdrnyla44db6bmihvkefukg5f6axzprg/targets/x86_64-linux/lib:/storage/dftfeDependenciesNoMKL/dealii/installComplex/lib:/storage/dftfeDependenciesNoMKL/alglib/install/lib:/storage/dftfeDependenciesNoMKL/libxc/install/lib:/storage/dftfeDependenciesNoMKL/spglib/install/lib:/apps/softwares/spack/opt/spack/linux-ubuntu24.04-cascadelake/gcc-13.3.0/nccl-2.23.4-1-xyspmp23glxb4slgne4xpemahjrkuyrj/lib:/apps/softwares/spack/opt/spack/linux-ubuntu24.04-cascadelake/gcc-13.3.0/zlib-ng-2.2.3-nqbp3zzmzdgtwk34m3miae24str5vtnj/lib:/storage/dftfeDependenciesNoMKL/boost/install/lib:/storage/dftfeDependenciesNoMKL/kokkos/install/lib:/storage/dftfeDependenciesNoMKL/p4est/install/lib:/storage/dftfeDependenciesNoMKL/slepc/installComplex/lib:/storage/dftfeDependenciesNoMKL/petsc/installComplex/lib:/apps/softwares/spack/opt/spack/linux-ubuntu24.04-cascadelake/gcc-13.3.0/openmpi-5.0.6-ytficipzlncogz4ktqkzkwszqj7jw2ne/lib:/storage/dftfeDependenciesNoMKL/dftd/install/lib:/storage/dftfeDependenciesNoMKL/elpa/install/lib")
     if(CMAKE_INSTALL_DO_STRIP)
       execute_process(COMMAND "/usr/bin/strip" "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/lib/libdftfeComplex.so")
     endif()
@@ -56,9 +66,19 @@ if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT
 endif()
 
 if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT)
-  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/bin" TYPE EXECUTABLE FILES "/home/pa01/Mehul/DFTFE/build_local/complex/CMakeFiles/CMakeRelink.dir/dftfe")
   if(EXISTS "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/dftfe" AND
      NOT IS_SYMLINK "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/dftfe")
+    file(RPATH_CHECK
+         FILE "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/dftfe"
+         RPATH "/apps/softwares/spack/opt/spack/linux-ubuntu24.04-cascadelake/gcc-13.3.0/cuda-12.6.3-wdrnyla44db6bmihvkefukg5f6axzprg/targets/x86_64-linux/lib:/storage/dftfeDependenciesNoMKL/dealii/installComplex/lib:/apps/softwares/spack/opt/spack/linux-ubuntu24.04-cascadelake/gcc-13.3.0/zlib-ng-2.2.3-nqbp3zzmzdgtwk34m3miae24str5vtnj/lib:/storage/dftfeDependenciesNoMKL/boost/install/lib:/storage/dftfeDependenciesNoMKL/kokkos/install/lib:/storage/dftfeDependenciesNoMKL/p4est/install/lib:/storage/dftfeDependenciesNoMKL/slepc/installComplex/lib:/storage/dftfeDependenciesNoMKL/petsc/installComplex/lib:/apps/softwares/spack/opt/spack/linux-ubuntu24.04-cascadelake/gcc-13.3.0/openmpi-5.0.6-ytficipzlncogz4ktqkzkwszqj7jw2ne/lib:/storage/dftfeDependenciesNoMKL/alglib/install/lib:/storage/dftfeDependenciesNoMKL/libxc/install/lib:/storage/dftfeDependenciesNoMKL/spglib/install/lib:/storage/dftfeDependenciesNoMKL/dftd/install/lib:/storage/dftfeDependenciesNoMKL/elpa/install/lib:/apps/softwares/spack/opt/spack/linux-ubuntu24.04-cascadelake/gcc-13.3.0/nccl-2.23.4-1-xyspmp23glxb4slgne4xpemahjrkuyrj/lib")
+  endif()
+  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/bin" TYPE EXECUTABLE FILES "/home/pa01/Mehul/DFTFE/build_local/complex/dftfe")
+  if(EXISTS "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/dftfe" AND
+     NOT IS_SYMLINK "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/dftfe")
+    file(RPATH_CHANGE
+         FILE "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/dftfe"
+         OLD_RPATH "/home/pa01/Mehul/DFTFE/build_local/complex:/apps/softwares/spack/opt/spack/linux-ubuntu24.04-cascadelake/gcc-13.3.0/cuda-12.6.3-wdrnyla44db6bmihvkefukg5f6axzprg/targets/x86_64-linux/lib:/storage/dftfeDependenciesNoMKL/dealii/installComplex/lib:/apps/softwares/spack/opt/spack/linux-ubuntu24.04-cascadelake/gcc-13.3.0/zlib-ng-2.2.3-nqbp3zzmzdgtwk34m3miae24str5vtnj/lib:/storage/dftfeDependenciesNoMKL/boost/install/lib:/storage/dftfeDependenciesNoMKL/kokkos/install/lib:/storage/dftfeDependenciesNoMKL/p4est/install/lib:/storage/dftfeDependenciesNoMKL/slepc/installComplex/lib:/storage/dftfeDependenciesNoMKL/petsc/installComplex/lib:/apps/softwares/spack/opt/spack/linux-ubuntu24.04-cascadelake/gcc-13.3.0/openmpi-5.0.6-ytficipzlncogz4ktqkzkwszqj7jw2ne/lib:/storage/dftfeDependenciesNoMKL/alglib/install/lib:/storage/dftfeDependenciesNoMKL/libxc/install/lib:/storage/dftfeDependenciesNoMKL/spglib/install/lib:/storage/dftfeDependenciesNoMKL/dftd/install/lib:/storage/dftfeDependenciesNoMKL/elpa/install/lib:/apps/softwares/spack/opt/spack/linux-ubuntu24.04-cascadelake/gcc-13.3.0/nccl-2.23.4-1-xyspmp23glxb4slgne4xpemahjrkuyrj/lib:"
+         NEW_RPATH "/apps/softwares/spack/opt/spack/linux-ubuntu24.04-cascadelake/gcc-13.3.0/cuda-12.6.3-wdrnyla44db6bmihvkefukg5f6axzprg/targets/x86_64-linux/lib:/storage/dftfeDependenciesNoMKL/dealii/installComplex/lib:/apps/softwares/spack/opt/spack/linux-ubuntu24.04-cascadelake/gcc-13.3.0/zlib-ng-2.2.3-nqbp3zzmzdgtwk34m3miae24str5vtnj/lib:/storage/dftfeDependenciesNoMKL/boost/install/lib:/storage/dftfeDependenciesNoMKL/kokkos/install/lib:/storage/dftfeDependenciesNoMKL/p4est/install/lib:/storage/dftfeDependenciesNoMKL/slepc/installComplex/lib:/storage/dftfeDependenciesNoMKL/petsc/installComplex/lib:/apps/softwares/spack/opt/spack/linux-ubuntu24.04-cascadelake/gcc-13.3.0/openmpi-5.0.6-ytficipzlncogz4ktqkzkwszqj7jw2ne/lib:/storage/dftfeDependenciesNoMKL/alglib/install/lib:/storage/dftfeDependenciesNoMKL/libxc/install/lib:/storage/dftfeDependenciesNoMKL/spglib/install/lib:/storage/dftfeDependenciesNoMKL/dftd/install/lib:/storage/dftfeDependenciesNoMKL/elpa/install/lib:/apps/softwares/spack/opt/spack/linux-ubuntu24.04-cascadelake/gcc-13.3.0/nccl-2.23.4-1-xyspmp23glxb4slgne4xpemahjrkuyrj/lib")
     if(CMAKE_INSTALL_DO_STRIP)
       execute_process(COMMAND "/usr/bin/strip" "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/dftfe")
     endif()
