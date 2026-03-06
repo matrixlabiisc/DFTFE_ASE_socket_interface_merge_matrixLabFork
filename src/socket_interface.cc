@@ -301,7 +301,7 @@ namespace dftfe
                               std::vector<dftfe::uInt>         &numbers,
                               std::vector<bool>                &pbc,
                               std::vector<dftfe::uInt>         &mp_grid,
-                              std::vector<bool>                &mp_grid_shift,
+                              std::vector<dftfe::uInt>         &mp_grid_shift,
                               bool                             &spin_polarized,
                               double      &start_magnetization,
                               double      &fermi_temp,
@@ -350,9 +350,9 @@ namespace dftfe
     if (mp_grid.empty())
       mp_grid = {1, 1, 1};
 
-    mp_grid_shift = parse_bool_array(json, "mp_grid_shift");
+    mp_grid_shift = parse_int_array(json, "mp_grid_shift");
     if (mp_grid_shift.empty())
-      mp_grid_shift = {false, false, false};
+      mp_grid_shift = {0, 0, 0};
 
     spin_polarized = parse_scalar<bool>(json, "spin_polarized", false);
     start_magnetization =
@@ -502,7 +502,7 @@ namespace dftfe
         std::vector<dftfe::uInt>         numbers;
         std::vector<bool>                pbc;
         std::vector<dftfe::uInt>         mp_grid;
-        std::vector<bool>                mp_grid_shift;
+        std::vector<dftfe::uInt>         mp_grid_shift;
         bool                             spin_polarized;
         double                           start_magnetization;
         double                           fermi_temp;

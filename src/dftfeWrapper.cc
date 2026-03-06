@@ -204,7 +204,7 @@ namespace dftfe
     const std::vector<std::vector<double>> cell,
     const std::vector<bool>                pbc,
     const std::vector<dftfe::uInt>         mpGrid,
-    const std::vector<bool>                mpGridShift,
+    const std::vector<dftfe::uInt>         mpGridShift,
     const bool                             spinPolarizedDFT,
     const double                           startMagnetization,
     const double                           fermiDiracSmearingTemp,
@@ -330,7 +330,7 @@ namespace dftfe
     const std::vector<std::vector<double>> cell,
     const std::vector<bool>                pbc,
     const std::vector<dftfe::uInt>         mpGrid,
-    const std::vector<bool>                mpGridShift,
+    const std::vector<dftfe::uInt>         mpGridShift,
     const bool                             spinPolarizedDFT,
     const double                           startMagnetization,
     const double                           fermiDiracSmearingTemp,
@@ -644,17 +644,17 @@ namespace dftfe
             system(cmd.c_str());
 
             cmd = "sed -i 's/set SAMPLING SHIFT 1=.*/set SAMPLING SHIFT 1=" +
-                  std::to_string(mpGridShift[0] ? 1 : 0) + "/g' " +
+                  std::to_string(mpGridShift[0]) + "/g' " +
                   parameter_file_path;
             system(cmd.c_str());
 
             cmd = "sed -i 's/set SAMPLING SHIFT 2=.*/set SAMPLING SHIFT 2=" +
-                  std::to_string(mpGridShift[1] ? 1 : 0) + "/g' " +
+                  std::to_string(mpGridShift[1]) + "/g' " +
                   parameter_file_path;
             system(cmd.c_str());
 
             cmd = "sed -i 's/set SAMPLING SHIFT 3=.*/set SAMPLING SHIFT 3=" +
-                  std::to_string(mpGridShift[2] ? 1 : 0) + "/g' " +
+                  std::to_string(mpGridShift[2]) + "/g' " +
                   parameter_file_path;
             system(cmd.c_str());
 
@@ -1094,10 +1094,15 @@ namespace dftfe
       d_mpi_comm_parent != MPI_COMM_NULL,
       dealii::ExcMessage(
         "DFT-FE Error: dftfeWrapper cannot be used on MPI_COMM_NULL."));
-    std::vector<std::vector<double>> ionicForces(
-      d_dftfeBasePtr->getForceonAtoms().size() / 3,
-      std::vector<double>(3, 0.0));
     std::vector<double> ionicForcesVec = d_dftfeBasePtr->getForceonAtoms();
+    
+    // Mehul: Safety check if forces were not computed
+    if (ionicForcesVec.empty())
+      return std::vector<std::vector<double>>();
+
+    std::vector<std::vector<double>> ionicForces(
+      ionicForcesVec.size() / 3,
+      std::vector<double>(3, 0.0));
     for (dftfe::uInt i = 0; i < ionicForces.size(); ++i)
       for (dftfe::uInt j = 0; j < 3; ++j)
         ionicForces[i][j] = -ionicForcesVec[3 * i + j];

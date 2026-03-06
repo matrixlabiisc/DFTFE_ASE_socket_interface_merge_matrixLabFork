@@ -110,8 +110,8 @@ namespace dftfe
      * @param[in] mpgrid vector of Monkhorst-Pack grid points along the
      * reciprocal lattice vector directions for sampling the Brillouin zone
      * along periodic directions. Default value is a Gamma point.
-     * @param[in] mpgridShift vector of bools where false denotes no shift and
-     * true denotes shift by half the Monkhost-Pack grid spacing. Default value
+     * @param[in] mpgridShift vector of integers where 0 denotes no shift and
+     * 1 denotes shift by half the Monkhost-Pack grid spacing. Default value
      * is no shift.
      * @param[in] spinPolarizedDFT toggles spin-polarized DFT calculations.
      * Default value is false
@@ -149,9 +149,7 @@ namespace dftfe
       const std::vector<std::vector<double>> cell,
       const std::vector<bool>                pbc,
       const std::vector<dftfe::uInt> mpGrid = std::vector<dftfe::uInt>{1, 1, 1},
-      const std::vector<bool>        mpGridShift      = std::vector<bool>{false,
-                                                                          false,
-                                                                          false},
+      const std::vector<dftfe::uInt> mpGridShift = std::vector<dftfe::uInt>{0, 0, 0},
       const bool                     spinPolarizedDFT = false,
       const double                   startMagnetization     = 0.0,
       const double                   fermiDiracSmearingTemp = 500.0,
@@ -208,9 +206,9 @@ namespace dftfe
            const std::vector<dftfe::uInt> mpGrid = std::vector<dftfe::uInt>{1,
                                                                             1,
                                                                             1},
-           const std::vector<bool>        mpGridShift = std::vector<bool>{false,
-                                                                          false,
-                                                                          false},
+           const std::vector<dftfe::uInt> mpGridShift = std::vector<dftfe::uInt>{0,
+                                                                                 0,
+                                                                                 0},
            const bool                     spinPolarizedDFT       = false,
            const double                   startMagnetization     = 0.0,
            const double                   fermiDiracSmearingTemp = 500.0,

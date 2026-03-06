@@ -43,7 +43,7 @@ namespace dftfe
       std::vector<dftfe::uInt>         &numbers,
       std::vector<bool>                &pbc,
       std::vector<dftfe::uInt>         &mp_grid,
-      std::vector<bool>                &mp_grid_shift,
+      std::vector<dftfe::uInt>         &mp_grid_shift,
       bool                             &spin_polarized,
       double                           &start_magnetization,
       double                           &fermi_temp,
