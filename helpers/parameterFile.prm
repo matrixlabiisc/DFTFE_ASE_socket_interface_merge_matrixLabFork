@@ -37,7 +37,7 @@ subsection Finite element mesh parameters
 end
 
 subsection Brillouin zone k point sampling options
-  set USE TIME REVERSAL SYMMETRY=true
+  set USE TIME REVERSAL SYMMETRY=false
   subsection Monkhorst-Pack (MP) grid generation
     set SAMPLING POINTS 1=1
     set SAMPLING POINTS 2=1
