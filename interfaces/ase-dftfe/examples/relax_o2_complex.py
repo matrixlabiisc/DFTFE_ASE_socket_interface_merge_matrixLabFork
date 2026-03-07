@@ -31,8 +31,8 @@ atoms = Atoms(
 # DFT-FE Setup
 # =========================
 
-psp_path = "/home/pa01/Mehul/ase-dftfe-socket/psp_library"
-dftfe_bin = "/home/pa01/Mehul/DFTFE/build_gpu/release/complex/dftfe"
+psp_path = "/DFTFE/interfaces/ase-dftfe/psp_library/O.upf"
+dftfe_bin = "/DFTFE/build/release/complex/dftfe" # to check complex build relaxation as well
 
 run_cmd = (
     f"export DFTFE_PSP_PATH={psp_path} && "

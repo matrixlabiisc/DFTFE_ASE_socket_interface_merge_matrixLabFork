@@ -95,5 +95,3 @@ latex/
 indentationStandard/programs/
 include/git_info.h
 
-# markdown files
-*.md

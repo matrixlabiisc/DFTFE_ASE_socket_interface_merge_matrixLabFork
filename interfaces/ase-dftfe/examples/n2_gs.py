@@ -32,8 +32,8 @@ atoms = Atoms(
 # DFT-FE Setup
 # =========================
 
-psp_path = "/home/pa01/Mehul/ase-dftfe-socket/psp_library"
-dftfe_bin = "/home/pa01/Mehul/DFTFE/build_gpu/release/real/dftfe"
+psp_path = "/DFTFE/interfaces/ase-dftfe/psp_library/" # if not given a .upf file but just a psp library path, we will automatically fetch the element.upf file from the library for you
+dftfe_bin = "/DFTFE/build/release/real/dftfe"
 
 run_cmd = (
     f"export DFTFE_PSP_PATH={psp_path} && "
