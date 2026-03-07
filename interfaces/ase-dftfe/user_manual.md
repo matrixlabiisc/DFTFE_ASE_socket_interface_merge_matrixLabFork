@@ -138,15 +138,11 @@ Planned improvements include:
 
 # License
 
-This project is distributed under the **MIT License**.
-
-The interface communicates with **DFT-FE**, which is licensed under the:
+The interface communicates with and resides within **DFT-FE**, which is licensed under the:
 
 ```
 GNU Lesser General Public License (LGPL) v2.1 or later
 ```
-
-See the `NOTICE` file for attribution details.
 
 ---
 
