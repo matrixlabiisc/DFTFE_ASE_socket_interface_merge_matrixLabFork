@@ -205,7 +205,7 @@ namespace dftfe
     const std::vector<bool>                pbc,
     const std::vector<dftfe::uInt>         mpGrid,
     const std::vector<dftfe::uInt>         mpGridShift,
-    const bool                             spinPolarizedDFT,
+    const dftfe::Int                       spinPolarizedDFT,
     const double                           startMagnetization,
     const double                           fermiDiracSmearingTemp,
     const dftfe::uInt                      npkpt,
@@ -331,7 +331,7 @@ namespace dftfe
     const std::vector<bool>                pbc,
     const std::vector<dftfe::uInt>         mpGrid,
     const std::vector<dftfe::uInt>         mpGridShift,
-    const bool                             spinPolarizedDFT,
+    const dftfe::Int                       spinPolarizedDFT,
     const double                           startMagnetization,
     const double                           fermiDiracSmearingTemp,
     const dftfe::uInt                      npkpt,
@@ -347,13 +347,13 @@ namespace dftfe
     // New parameters
     const dftfe::uInt wfcBlockSize,
     const dftfe::uInt chebyWfcBlockSize,
-    const bool        smearedNuclearCharges,
-    const bool        useGroupSymmetry,
-    const bool        useTimeReversalSymmetry,
+    const dftfe::Int  smearedNuclearCharges,
+    const dftfe::Int  useGroupSymmetry,
+    const dftfe::Int  useTimeReversalSymmetry,
     const dftfe::Int  mixingHistory,
     const dftfe::Int  maxSCFIterations,
     const dftfe::Int  dispersionCorrectionType,
-    const bool        pseudopotentialCalculation,
+    const dftfe::Int  pseudopotentialCalculation,
     const dftfe::Int  verbosity,
     const bool        setDeviceToMPITaskBindingInternally,
     const bool        keepScratch,
@@ -608,109 +608,123 @@ namespace dftfe
               dftfePseudoFileNameForSed + "/g' " + parameter_file_path;
             system(cmd.c_str());
 
-            if (pbc[0] == false && pbc[1] == false && pbc[2] == false)
-              {
-                const std::string option = "false";
-                cmd = "sed -i 's/set CELL STRESS=.*/set CELL STRESS=" + option +
-                      "/g' " + parameter_file_path;
-                system(cmd.c_str());
-              }
+            if (pbc.size() >= 3) {
+              const std::string option = (pbc[0] || pbc[1] || pbc[2]) ? "true" : "false";
+              // We only override CELL STRESS if all PBCs are false (it must be false)
+              // But wait, the previous logic explicitly disabled it when all were false
+              if (pbc[0] == false && pbc[1] == false && pbc[2] == false)
+                {
+                  cmd = "sed -i 's/set CELL STRESS=.*/set CELL STRESS=false/g' " + parameter_file_path;
+                  system(cmd.c_str());
+                }
 
-            const std::string pbc1 = pbc[0] ? "true" : "false";
-            cmd = "sed -i 's/set PERIODIC1=.*/set PERIODIC1=" + pbc1 + "/g' " +
-                  parameter_file_path;
-            system(cmd.c_str());
+              const std::string pbc1 = pbc[0] ? "true" : "false";
+              cmd = "sed -i 's/set PERIODIC1=.*/set PERIODIC1=" + pbc1 + "/g' " +
+                    parameter_file_path;
+              system(cmd.c_str());
 
-            const std::string pbc2 = pbc[1] ? "true" : "false";
-            cmd = "sed -i 's/set PERIODIC2=.*/set PERIODIC2=" + pbc2 + "/g' " +
-                  parameter_file_path;
-            system(cmd.c_str());
+              const std::string pbc2 = pbc[1] ? "true" : "false";
+              cmd = "sed -i 's/set PERIODIC2=.*/set PERIODIC2=" + pbc2 + "/g' " +
+                    parameter_file_path;
+              system(cmd.c_str());
 
-            const std::string pbc3 = pbc[2] ? "true" : "false";
-            cmd = "sed -i 's/set PERIODIC3=.*/set PERIODIC3=" + pbc3 + "/g' " +
-                  parameter_file_path;
-            system(cmd.c_str());
+              const std::string pbc3 = pbc[2] ? "true" : "false";
+              cmd = "sed -i 's/set PERIODIC3=.*/set PERIODIC3=" + pbc3 + "/g' " +
+                    parameter_file_path;
+              system(cmd.c_str());
+            }
 
-            cmd = "sed -i 's/set SAMPLING POINTS 1=.*/set SAMPLING POINTS 1=" +
-                  std::to_string(mpGrid[0]) + "/g' " + parameter_file_path;
-            system(cmd.c_str());
+            if (mpGrid.size() >= 3) {
+              cmd = "sed -i 's/set SAMPLING POINTS 1=.*/set SAMPLING POINTS 1=" +
+                    std::to_string(mpGrid[0]) + "/g' " + parameter_file_path;
+              system(cmd.c_str());
 
-            cmd = "sed -i 's/set SAMPLING POINTS 2=.*/set SAMPLING POINTS 2=" +
-                  std::to_string(mpGrid[1]) + "/g' " + parameter_file_path;
-            system(cmd.c_str());
+              cmd = "sed -i 's/set SAMPLING POINTS 2=.*/set SAMPLING POINTS 2=" +
+                    std::to_string(mpGrid[1]) + "/g' " + parameter_file_path;
+              system(cmd.c_str());
 
-            cmd = "sed -i 's/set SAMPLING POINTS 3=.*/set SAMPLING POINTS 3=" +
-                  std::to_string(mpGrid[2]) + "/g' " + parameter_file_path;
-            system(cmd.c_str());
+              cmd = "sed -i 's/set SAMPLING POINTS 3=.*/set SAMPLING POINTS 3=" +
+                    std::to_string(mpGrid[2]) + "/g' " + parameter_file_path;
+              system(cmd.c_str());
+            }
 
-            cmd = "sed -i 's/set SAMPLING SHIFT 1=.*/set SAMPLING SHIFT 1=" +
-                  std::to_string(mpGridShift[0]) + "/g' " +
-                  parameter_file_path;
-            system(cmd.c_str());
+            if (mpGridShift.size() >= 3) {
+              cmd = "sed -i 's/set SAMPLING SHIFT 1=.*/set SAMPLING SHIFT 1=" +
+                    std::to_string(mpGridShift[0]) + "/g' " +
+                    parameter_file_path;
+              system(cmd.c_str());
 
-            cmd = "sed -i 's/set SAMPLING SHIFT 2=.*/set SAMPLING SHIFT 2=" +
-                  std::to_string(mpGridShift[1]) + "/g' " +
-                  parameter_file_path;
-            system(cmd.c_str());
+              cmd = "sed -i 's/set SAMPLING SHIFT 2=.*/set SAMPLING SHIFT 2=" +
+                    std::to_string(mpGridShift[1]) + "/g' " +
+                    parameter_file_path;
+              system(cmd.c_str());
 
-            cmd = "sed -i 's/set SAMPLING SHIFT 3=.*/set SAMPLING SHIFT 3=" +
-                  std::to_string(mpGridShift[2]) + "/g' " +
-                  parameter_file_path;
-            system(cmd.c_str());
+              cmd = "sed -i 's/set SAMPLING SHIFT 3=.*/set SAMPLING SHIFT 3=" +
+                    std::to_string(mpGridShift[2]) + "/g' " +
+                    parameter_file_path;
+              system(cmd.c_str());
+            }
 
-            const dftfe::Int spin = spinPolarizedDFT ? 1 : 0;
-            cmd = "sed -i 's/set SPIN POLARIZATION=.*/set SPIN POLARIZATION=" +
-                  std::to_string(spin) + "/g' " + parameter_file_path;
-            system(cmd.c_str());
+            if (spinPolarizedDFT != -1) {
+              cmd = "sed -i 's/set SPIN POLARIZATION.*/set SPIN POLARIZATION=" +
+                    std::to_string(spinPolarizedDFT) + "/g' " + parameter_file_path;
+              system(cmd.c_str());
+            }
 
-            cmd =
-              "sed -i 's/set TOTAL MAGNETIZATION=.*/set TOTAL MAGNETIZATION=" +
-              std::to_string(startMagnetization * 2 *
-                             atomicNumbersUniqueVec.size()) +
-              "/g' " +
-              parameter_file_path; // Fixing magnetization derived from per-atom
-            // Note: startMagnetization from ASE is usually per-atom or total?
-            // User requested explicit handling. Let's assume passed param is
-            // what we want or handle carefully. For now, mirroring existing.
-            // Actually, let's stick to the new params we promised.
+            if (startMagnetization != -1.0) {
+              cmd =
+                "sed -i 's/set TOTAL MAGNETIZATION.*/set TOTAL MAGNETIZATION=" +
+                std::to_string(startMagnetization * 2 *
+                               atomicNumbersUniqueVec.size()) +
+                "/g' " +
+                parameter_file_path;
+              system(cmd.c_str());
 
-            cmd = "sed -i 's/set POLYNOMIAL ORDER=.*/set POLYNOMIAL ORDER=" +
-                  std::to_string(polynomialOrder) + "/g' " +
-                  parameter_file_path;
-            system(cmd.c_str());
+              cmd =
+                "sed -i 's/set START MAGNETIZATION.*/set START MAGNETIZATION=" +
+                std::to_string(startMagnetization) + "/g' " + parameter_file_path;
+              system(cmd.c_str());
+            }
 
-            cmd = "sed -i 's/set TOLERANCE=.*/set TOLERANCE=" +
-                  std::to_string(tolerance) + "/g' " + parameter_file_path;
-            system(cmd.c_str());
+            if (polynomialOrder != -1) {
+              cmd = "sed -i 's/set POLYNOMIAL ORDER.*/set POLYNOMIAL ORDER=" +
+                    std::to_string(polynomialOrder) + "/g' " +
+                    parameter_file_path;
+              system(cmd.c_str());
+            }
 
-            cmd =
-              "sed -i 's/set EXCHANGE CORRELATION TYPE=.*/set EXCHANGE CORRELATION TYPE=" +
-              xc + "/g' " + parameter_file_path;
-            system(cmd.c_str());
+            if (tolerance != -1.0) {
+              cmd = "sed -i 's/set TOLERANCE.*/set TOLERANCE=" +
+                    std::to_string(tolerance) + "/g' " + parameter_file_path;
+              system(cmd.c_str());
+            }
 
-            // User requested SOLVER MODE=CALC, but sticking to GS for stability
-            // unless core is changed. If we want to support it: cmd = "sed -i
-            // 's/set SOLVER MODE=.*/set SOLVER MODE=CALC/g' " +
-            // parameter_file_path; system(cmd.c_str());
+            if (xc != "Unprovided") {
+              cmd =
+                "sed -i 's/set EXCHANGE CORRELATION TYPE.*/set EXCHANGE CORRELATION TYPE=" +
+                xc + "/g' " + parameter_file_path;
+              system(cmd.c_str());
+            }
 
-            cmd =
-              "sed -i 's/set START MAGNETIZATION=.*/set START MAGNETIZATION=" +
-              std::to_string(startMagnetization) + "/g' " + parameter_file_path;
-            system(cmd.c_str());
+            if (fermiDiracSmearingTemp != -1.0) {
+              cmd = "sed -i 's/set TEMPERATURE.*/set TEMPERATURE=" +
+                    std::to_string(fermiDiracSmearingTemp) + "/g' " +
+                    parameter_file_path;
+              system(cmd.c_str());
+            }
 
-            cmd = "sed -i 's/set TEMPERATURE.*/set TEMPERATURE=" +
-                  std::to_string(fermiDiracSmearingTemp) + "/g' " +
-                  parameter_file_path;
-            system(cmd.c_str());
+            if (scfMixingParameter != -1.0) {
+              cmd = "sed -i 's/set MIXING PARAMETER.*/set MIXING PARAMETER=" +
+                    std::to_string(scfMixingParameter) + "/g' " +
+                    parameter_file_path;
+              system(cmd.c_str());
+            }
 
-            cmd = "sed -i 's/set MIXING PARAMETER.*/set MIXING PARAMETER=" +
-                  std::to_string(scfMixingParameter) + "/g' " +
-                  parameter_file_path;
-            system(cmd.c_str());
-
-            cmd = "sed -i 's/set MIXING METHOD.*/set MIXING METHOD=" +
-                  mixingScheme + "/g' " + parameter_file_path;
-            system(cmd.c_str());
+            if (mixingScheme != "Unprovided") {
+              cmd = "sed -i 's/set MIXING METHOD.*/set MIXING METHOD=" +
+                    mixingScheme + "/g' " + parameter_file_path;
+              system(cmd.c_str());
+            }
 
             // Disable default forces and stress in prm file (controlled
             // dynamically) Use [[:blank:]]* to allow optional spaces, and .*
@@ -727,75 +741,81 @@ namespace dftfe
               cellStress + "/g' " + parameter_file_path;
             system(cmd.c_str());
 
-            const dftfe::Int totalIrreducibleKpt =
-              mpGrid[0] * mpGrid[1] * mpGrid[2] / 2;
-            const dftfe::Int npkptSet =
-              npkpt > 0 ? npkpt :
-                          internalWrapper::divisor_closest(totalMPIProcesses,
-                                                           totalIrreducibleKpt);
-            cmd =
-              "sed -i 's/set NPKPT.*/set NPKPT=" + std::to_string(npkptSet) +
-              "/g' " + parameter_file_path;
-            system(cmd.c_str());
+            if (npkpt != 999999) {
+              const dftfe::Int totalIrreducibleKpt =
+                mpGrid[0] * mpGrid[1] * mpGrid[2] / 2;
+              const dftfe::Int npkptSet =
+                npkpt > 0 ? npkpt :
+                            internalWrapper::divisor_closest(totalMPIProcesses,
+                                                             totalIrreducibleKpt);
+              cmd =
+                "sed -i 's/set NPKPT.*/set NPKPT=" + std::to_string(npkptSet) +
+                "/g' " + parameter_file_path;
+              system(cmd.c_str());
+            }
 
+            if (meshSize != -1.0) {
+              cmd =
+                "sed -i 's/set MESH SIZE AROUND ATOM.*/set MESH SIZE AROUND ATOM=" +
+                std::to_string(meshSize) + "/g' " + parameter_file_path;
+              system(cmd.c_str());
+            }
 
-            cmd =
-              "sed -i 's/set MESH SIZE AROUND ATOM.*/set MESH SIZE AROUND ATOM=" +
-              std::to_string(meshSize) + "/g' " + parameter_file_path;
-            system(cmd.c_str());
+            if (verbosity != -1) {
+              cmd = "sed -i 's/set VERBOSITY.*/set VERBOSITY=" +
+                    std::to_string(verbosity) + "/g' " + parameter_file_path;
+              system(cmd.c_str());
+            }
 
-            cmd = "sed -i 's/set VERBOSITY.*/set VERBOSITY=" +
-                  std::to_string(verbosity) + "/g' " + parameter_file_path;
-            system(cmd.c_str());
+            if (atomBallRadius != -1.0) {
+              int rank_debug;
+              MPI_Comm_rank(d_mpi_comm_parent, &rank_debug);
+              if (rank_debug == 0)
+                std::cout << "DEBUG: applying atomBallRadius=" << atomBallRadius
+                          << std::endl;
+              cmd =
+                "sed -i 's/set[[:blank:]]\\+ATOM[[:blank:]]\\+BALL[[:blank:]]\\+RADIUS.*/set ATOM BALL RADIUS=" +
+                std::to_string(atomBallRadius) + "/g' " + parameter_file_path;
+              system(cmd.c_str());
+            }
 
-            int rank_debug;
-            MPI_Comm_rank(d_mpi_comm_parent, &rank_debug);
-            if (rank_debug == 0)
-              std::cout << "DEBUG: applying atomBallRadius=" << atomBallRadius
-                        << std::endl;
-            cmd =
-              "sed -i 's/set[[:blank:]]\\+ATOM[[:blank:]]\\+BALL[[:blank:]]\\+RADIUS.*/set ATOM BALL RADIUS=" +
-              std::to_string(atomBallRadius) + "/g' " + parameter_file_path;
-            system(cmd.c_str());
+            if (orthogonalizationType != "Unprovided") {
+              cmd =
+                "sed -i 's/set ORTHOGONALIZATION TYPE.*/set ORTHOGONALIZATION TYPE = " +
+                orthogonalizationType + "/g' " + parameter_file_path;
+              system(cmd.c_str());
+            }
 
-            cmd =
-              "sed -i 's/set ORTHOGONALIZATION TYPE.*/set ORTHOGONALIZATION TYPE = " +
-              orthogonalizationType + "/g' " + parameter_file_path;
-            system(cmd.c_str());
+            if (smearedNuclearCharges != -1) {
+              const std::string smeared =
+                smearedNuclearCharges ? "true" : "false";
+              cmd =
+                "sed -i 's/set SMEARED NUCLEAR CHARGES.*/set SMEARED NUCLEAR CHARGES=" +
+                smeared + "/g' " + parameter_file_path;
+              system(cmd.c_str());
+            }
 
-            const std::string smeared =
-              smearedNuclearCharges ? "true" : "false";
-            cmd =
-              "sed -i 's/set SMEARED NUCLEAR CHARGES.*/set SMEARED NUCLEAR CHARGES=" +
-              smeared + "/g' " + parameter_file_path;
-            system(cmd.c_str());
+            if (useGroupSymmetry != -1) {
+              const std::string groupSym = useGroupSymmetry ? "true" : "false";
+              cmd = "sed -i 's/set USE GROUP SYMMETRY.*/set USE GROUP SYMMETRY=" +
+                    groupSym + "/g' " + parameter_file_path;
+              system(cmd.c_str());
+            }
 
-            const std::string groupSym = useGroupSymmetry ? "true" : "false";
-            cmd = "sed -i 's/set USE GROUP SYMMETRY.*/set USE GROUP SYMMETRY=" +
-                  groupSym + "/g' " + parameter_file_path;
-            system(cmd.c_str());
+            if (useTimeReversalSymmetry != -1) {
+              const std::string timeRev =
+                useTimeReversalSymmetry ? "true" : "false";
+              cmd =
+                "sed -i 's/set USE TIME REVERSAL SYMMETRY.*/set USE TIME REVERSAL SYMMETRY=" +
+                timeRev + "/g' " + parameter_file_path;
+              system(cmd.c_str());
+            }
 
-            const std::string timeRev =
-              useTimeReversalSymmetry ? "true" : "false";
-            cmd =
-              "sed -i 's/set USE TIME REVERSAL SYMMETRY.*/set USE TIME REVERSAL SYMMETRY=" +
-              timeRev + "/g' " + parameter_file_path;
-            system(cmd.c_str());
-
-            cmd = "sed -i 's/set LBFGS HISTORY.*/set LBFGS HISTORY=" +
-                  std::to_string(mixingHistory) + "/g' " + parameter_file_path;
-            system(cmd.c_str());
-            // Note: mixingHistory might map to Anderson history in SCF? Manual
-            // implies LBFGS/Anderson share history param sometimes or separate.
-            // "MIXING HISTORY" is not standard in my snippet, but "LBFGS
-            // HISTORY" is. Using "MIXING HISTORY" if it exists, else rely on
-            // default. Wait, manual snippet didn't show "MIXING HISTORY". It
-            // showed "LBFGS HISTORY" under Optimization. For SCF Anderson
-            // mixing history, usually it's hardcoded or "ANDERSON MIXING
-            // HISTORY". Adding explicitly for "MIXING HISTORY" just in case:
-            // cmd = "sed -i 's/set MIXING HISTORY.*/set MIXING HISTORY=" +
-            // std::to_string(mixingHistory) + "/g' " + parameter_file_path;
-            // system(cmd.c_str());
+            if (mixingHistory != -1) {
+              cmd = "sed -i 's/set LBFGS HISTORY.*/set LBFGS HISTORY=" +
+                    std::to_string(mixingHistory) + "/g' " + parameter_file_path;
+              system(cmd.c_str());
+            }
 
             // "MAXIMUM NUMBER OF SCF ITERATIONS" is common request. Manual
             // snippet didn't show it in "SCF parameters" list I saw (it was
@@ -805,25 +825,31 @@ namespace dftfe
             // I'll assume standard DFT-FE param "MAXIMUM NUMBER OF SCF
             // ITERATIONS". If it doesn't exist in template, sed won't hurt (no
             // match). DFT-FE uses "MAXIMUM ITERATIONS" inside SCF parameters
-            cmd = "sed -i 's/set MAXIMUM ITERATIONS.*/set MAXIMUM ITERATIONS=" +
-                  std::to_string(maxSCFIterations) + "/g' " +
-                  parameter_file_path;
-            system(cmd.c_str());
+            if (maxSCFIterations != -1) {
+              cmd = "sed -i 's/set MAXIMUM ITERATIONS.*/set MAXIMUM ITERATIONS=" +
+                    std::to_string(maxSCFIterations) + "/g' " +
+                    parameter_file_path;
+              system(cmd.c_str());
+            }
 
-            cmd =
-              "sed -i 's/set DISPERSION CORRECTION TYPE.*/set DISPERSION CORRECTION TYPE=" +
-              std::to_string(dispersionCorrectionType) + "/g' " +
-              parameter_file_path;
-            system(cmd.c_str());
+            if (dispersionCorrectionType != -1) {
+              cmd =
+                "sed -i 's/set DISPERSION CORRECTION TYPE.*/set DISPERSION CORRECTION TYPE=" +
+                std::to_string(dispersionCorrectionType) + "/g' " +
+                parameter_file_path;
+              system(cmd.c_str());
+            }
 
-            const std::string pspCalc =
-              pseudopotentialCalculation ? "true" : "false";
-            cmd =
-              "sed -i 's/set PSEUDOPOTENTIAL CALCULATION.*/set PSEUDOPOTENTIAL CALCULATION=" +
-              pspCalc + "/g' " + parameter_file_path;
-            system(cmd.c_str());
+            if (pseudopotentialCalculation != -1) {
+              const std::string pspCalc =
+                pseudopotentialCalculation ? "true" : "false";
+              cmd =
+                "sed -i 's/set PSEUDOPOTENTIAL CALCULATION.*/set PSEUDOPOTENTIAL CALCULATION=" +
+                pspCalc + "/g' " + parameter_file_path;
+              system(cmd.c_str());
+            }
 
-            if (numKohnSham > 0)
+            if (numKohnSham != 999999)
               {
                 cmd =
                   "sed -i 's/set NUMBER OF KOHN-SHAM WAVEFUNCTIONS.*/set NUMBER OF KOHN-SHAM WAVEFUNCTIONS=" +
@@ -833,7 +859,7 @@ namespace dftfe
 
             // Mehul: Added support for block size parameters
             // Only write if > 0 (0 implies auto/default)
-            if (wfcBlockSize > 0)
+            if (wfcBlockSize != 999999)
               {
                 cmd = "sed -i 's/set WFC BLOCK SIZE.*/set WFC BLOCK SIZE=" +
                       std::to_string(wfcBlockSize) + "/g' " +
@@ -841,7 +867,7 @@ namespace dftfe
                 system(cmd.c_str());
               }
 
-            if (chebyWfcBlockSize > 0)
+            if (chebyWfcBlockSize != 999999)
               {
                 cmd =
                   "sed -i 's/set CHEBY WFC BLOCK SIZE.*/set CHEBY WFC BLOCK SIZE=" +

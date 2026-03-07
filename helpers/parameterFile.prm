@@ -29,7 +29,7 @@ end
 subsection Finite element mesh parameters
   set POLYNOMIAL ORDER=6
   subsection Auto mesh generation parameters
-    set ATOM BALL RADIUS      = 1.5
+    set ATOM BALL RADIUS      = 0.0
     set BASE MESH SIZE        = 0.0
     set MESH SIZE AROUND ATOM = 0.5
     set MESH SIZE AT ATOM     = 0.0
@@ -54,9 +54,9 @@ end
 
 
 subsection SCF parameters
-  set TEMPERATURE=500
-  set TOLERANCE=1e-5
-  set MIXING PARAMETER=0.2
+  set TEMPERATURE=0
+  set TOLERANCE=0
+  set MIXING PARAMETER=0.0
   set MAXIMUM ITERATIONS=100
   subsection Eigen-solver parameters
     set NUMBER OF KOHN-SHAM WAVEFUNCTIONS=20

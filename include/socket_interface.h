@@ -44,7 +44,7 @@ namespace dftfe
       std::vector<bool>                &pbc,
       std::vector<dftfe::uInt>         &mp_grid,
       std::vector<dftfe::uInt>         &mp_grid_shift,
-      bool                             &spin_polarized,
+      dftfe::Int                       &spin_polarized,
       double                           &start_magnetization,
       double                           &fermi_temp,
       dftfe::uInt                      &npkpt,
@@ -60,13 +60,13 @@ namespace dftfe
       // New parameters
       dftfe::uInt &wfc_block_size,
       dftfe::uInt &cheby_wfc_block_size,
-      bool        &smeared_nuclear_charges,
-      bool        &use_group_symmetry,
-      bool &use_time_reversal_symmetry, // Mehul -> added time reversal symmetry
+      dftfe::Int  &smeared_nuclear_charges,
+      dftfe::Int  &use_group_symmetry,
+      dftfe::Int  &use_time_reversal_symmetry, // Mehul -> added time reversal symmetry
       dftfe::Int  &mixing_history,
       dftfe::Int  &max_scf_iterations,
       dftfe::Int  &dispersion_correction_type,
-      bool        &pseudopotential_calculation,
+      dftfe::Int  &pseudopotential_calculation,
       dftfe::Int  &verbosity,
       bool        &use_device,
       bool        &keep_scratch,   // New parameter

@@ -302,7 +302,7 @@ namespace dftfe
                               std::vector<bool>                &pbc,
                               std::vector<dftfe::uInt>         &mp_grid,
                               std::vector<dftfe::uInt>         &mp_grid_shift,
-                              bool                             &spin_polarized,
+                              dftfe::Int                       &spin_polarized,
                               double      &start_magnetization,
                               double      &fermi_temp,
                               dftfe::uInt &npkpt,
@@ -318,13 +318,13 @@ namespace dftfe
                               // New parameters
                               dftfe::uInt &wfc_block_size,
                               dftfe::uInt &cheby_wfc_block_size,
-                              bool        &smeared_nuclear_charges,
-                              bool        &use_group_symmetry,
-                              bool        &use_time_reversal_symmetry,
+                              dftfe::Int  &smeared_nuclear_charges,
+                              dftfe::Int  &use_group_symmetry,
+                              dftfe::Int  &use_time_reversal_symmetry,
                               dftfe::Int  &mixing_history,
                               dftfe::Int  &max_scf_iterations,
                               dftfe::Int  &dispersion_correction_type,
-                              bool        &pseudopotential_calculation,
+                              dftfe::Int  &pseudopotential_calculation,
                               dftfe::Int  &verbosity,
                               bool        &use_device,
                               bool        &keep_scratch,   // New parameter
@@ -347,51 +347,47 @@ namespace dftfe
 
     // Parse parameters with defaults (though Python should send them)
     mp_grid = parse_int_array(json, "mp_grid");
-    if (mp_grid.empty())
-      mp_grid = {1, 1, 1};
 
     mp_grid_shift = parse_int_array(json, "mp_grid_shift");
-    if (mp_grid_shift.empty())
-      mp_grid_shift = {0, 0, 0};
 
-    spin_polarized = parse_scalar<bool>(json, "spin_polarized", false);
+    spin_polarized = parse_scalar<dftfe::Int>(json, "spin_polarized", -1);
     start_magnetization =
-      parse_scalar<double>(json, "start_magnetization", 0.0);
-    fermi_temp       = parse_scalar<double>(json, "fermi_temp", 500.0);
-    npkpt            = parse_scalar<dftfe::uInt>(json, "npkpt", 0);
-    mesh_size        = parse_scalar<double>(json, "mesh_size", 1.2);
-    scf_mixing       = parse_scalar<double>(json, "scf_mixing", 0.5);
-    mixing_scheme    = parse_string(json, "mixing_scheme", "Anderson");
-    polynomial_order = parse_scalar<dftfe::Int>(json, "polynomial_order", 7);
-    tolerance        = parse_scalar<double>(json, "tolerance", 5e-6);
-    xc               = parse_string(json, "xc", "GGA-PBE");
-    atom_ball_radius = parse_scalar<double>(json, "atom_ball_radius", 2.0);
-    num_kohn_sham    = parse_scalar<dftfe::uInt>(json, "num_kohn_sham", 0);
+      parse_scalar<double>(json, "start_magnetization", -1.0);
+    fermi_temp       = parse_scalar<double>(json, "fermi_temp", -1.0);
+    npkpt            = parse_scalar<dftfe::uInt>(json, "npkpt", 999999);
+    mesh_size        = parse_scalar<double>(json, "mesh_size", -1.0);
+    scf_mixing       = parse_scalar<double>(json, "scf_mixing", -1.0);
+    mixing_scheme    = parse_string(json, "mixing_scheme", "Unprovided");
+    polynomial_order = parse_scalar<dftfe::Int>(json, "polynomial_order", -1);
+    tolerance        = parse_scalar<double>(json, "tolerance", -1.0);
+    xc               = parse_string(json, "xc", "Unprovided");
+    atom_ball_radius = parse_scalar<double>(json, "atom_ball_radius", -1.0);
+    num_kohn_sham    = parse_scalar<dftfe::uInt>(json, "num_kohn_sham", 999999);
     orthogonalization_type =
-      parse_string(json, "orthogonalization_type", "Auto");
+      parse_string(json, "orthogonalization_type", "Unprovided");
 
     // New parameters parsing
-    wfc_block_size = parse_scalar<dftfe::uInt>(json, "wfc_block_size", 0);
+    wfc_block_size = parse_scalar<dftfe::uInt>(json, "wfc_block_size", 999999);
     cheby_wfc_block_size =
-      parse_scalar<dftfe::uInt>(json, "cheby_wfc_block_size", 0);
+      parse_scalar<dftfe::uInt>(json, "cheby_wfc_block_size", 999999);
 
     smeared_nuclear_charges =
-      parse_scalar<bool>(json, "smeared_nuclear_charges", true);
-    use_group_symmetry = parse_scalar<bool>(json, "use_group_symmetry", false);
+      parse_scalar<dftfe::Int>(json, "smeared_nuclear_charges", -1);
+    use_group_symmetry = parse_scalar<dftfe::Int>(json, "use_group_symmetry", -1);
     use_time_reversal_symmetry =
-      parse_scalar<bool>(json, "use_time_reversal_symmetry", false);
-    mixing_history = parse_scalar<dftfe::Int>(json, "mixing_history", 10);
+      parse_scalar<dftfe::Int>(json, "use_time_reversal_symmetry", -1);
+    mixing_history = parse_scalar<dftfe::Int>(json, "mixing_history", -1);
     max_scf_iterations =
-      parse_scalar<dftfe::Int>(json, "max_scf_iterations", 200);
+      parse_scalar<dftfe::Int>(json, "max_scf_iterations", -1);
     // New optional parameter for debugging
     // New optional parameter for debugging
     keep_scratch = parse_scalar<bool>(json, "keep_scratch", false);
     dispersion_correction_type =
-      parse_scalar<dftfe::Int>(json, "dispersion_correction_type", 0);
+      parse_scalar<dftfe::Int>(json, "dispersion_correction_type", -1);
     pseudopotential_calculation =
-      parse_scalar<bool>(json, "pseudopotential_calculation", true);
+      parse_scalar<dftfe::Int>(json, "pseudopotential_calculation", -1);
 
-    verbosity  = parse_scalar<dftfe::Int>(json, "verbosity", 1);
+    verbosity  = parse_scalar<dftfe::Int>(json, "verbosity", -1);
     use_device = parse_scalar<bool>(json, "use_device", false);
     compute_forces =
       parse_scalar<bool>(json, "compute_forces", true); // Default True
@@ -503,7 +499,7 @@ namespace dftfe
         std::vector<bool>                pbc;
         std::vector<dftfe::uInt>         mp_grid;
         std::vector<dftfe::uInt>         mp_grid_shift;
-        bool                             spin_polarized;
+        dftfe::Int                       spin_polarized;
         double                           start_magnetization;
         double                           fermi_temp;
         dftfe::uInt                      npkpt;
@@ -523,13 +519,13 @@ namespace dftfe
         // New parameters
         dftfe::uInt wfc_block_size;
         dftfe::uInt cheby_wfc_block_size;
-        bool        smeared_nuclear_charges;
-        bool        use_group_symmetry;
-        bool        use_time_reversal_symmetry;
+        dftfe::Int  smeared_nuclear_charges;
+        dftfe::Int  use_group_symmetry;
+        dftfe::Int  use_time_reversal_symmetry;
         dftfe::Int  mixing_history;
         dftfe::Int  max_scf_iterations;
         dftfe::Int  dispersion_correction_type;
-        bool        pseudopotential_calculation;
+        dftfe::Int  pseudopotential_calculation;
         bool        keep_scratch;   // New variable
         bool        compute_forces; // New variable
         bool        compute_stress; // New variable
