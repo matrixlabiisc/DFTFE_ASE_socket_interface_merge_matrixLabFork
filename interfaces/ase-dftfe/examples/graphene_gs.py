@@ -35,7 +35,7 @@ atoms = Atoms(
 # DFT-FE Setup
 # =========================
 
-psp_path = "/home/pa01/Mehul/DFTFE/interfaces/ase-dftfe/psp_library"
+psp_path = "/home/pa01/Mehul/DFTFE/interfaces/ase-dftfe/psp_library/C_copy.upf"
 dftfe_bin = "/home/pa01/Mehul/DFTFE/build_gpu/release/complex/dftfe"
 
 run_cmd = (
