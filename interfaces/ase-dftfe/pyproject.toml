@@ -8,13 +8,13 @@ version = "0.1.0"
 description = "Socket-based ASE interface for DFT-FE"
 readme = "README.md"
 authors = [
-  { name = "Mehul Darak", email = "mehul@example.com" }
+  { name = "Mehul Darak", email = "10pipioff@gmail.com" }
 ]
-license = { file = "LICENSE" }
+license = { text = "LGPL-2.1-or-later" }
 requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU Lesser General Public License v2.1 or later (LGPLv2.1+)",
     "Operating System :: OS Independent",
     "Topic :: Scientific/Engineering :: Physics",
 ]
@@ -24,7 +24,7 @@ dependencies = [
 ]
 
 [project.urls]
-"Homepage" = "https://bitbucket.org/your-username/ase-dftfe-socket"
+"Homepage" = "https://github.com/dftfeDevelopers/dftfe"
 
 [project.entry-points."ase.calculators"]
 dftfe = "dftfe:DFTFE"
