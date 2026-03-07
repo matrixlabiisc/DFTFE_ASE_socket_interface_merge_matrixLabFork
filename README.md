@@ -27,6 +27,20 @@ Running DFT-FE
 
 Instructions on how to run DFT-FE including demo examples can also be found in the *Running DFT-FE* section of the manual (download the development version manual [here](https://github.com/dftfeDevelopers/dftfe/blob/manual/manual-develop.pdf)). Beyond the demo examples in the manual, we also refer to our [benchmarks repository](https://github.com/dftfeDevelopers/dftfe-benchmarks/tree/master) which contains several accuracy benchmarks demonstrating the various capabilites of DFT-FE such as different boundary conditions, XC functionals (GGA, MGGA, DFT+U), calculations on magnetic materials, structural relaxation and Nudged Elastic Band calculations. Further, several post-processing capabilites such as band-structure and density of states are demonstrated. The same repository also includes performance benchmarks on a range of system sizes.
 
+Python (ASE) Interface
+----------------------
+
+DFT-FE provides a high-performance socket-based calculator for [ASE (Atomic Simulation Environment)](https://wiki.fysik.dtu.dk/ase/). This unified interface allows the DFT-FE process to remain persistent in memory, eliminating repeated initialization costs for iterative, complex workflows like molecular dynamics and geometry optimization.
+
+The interface code, prerequisites, and installation instructions are located in the `interfaces/ase-dftfe` directory. To install the Python interface in your environment, run:
+
+```bash
+cd interfaces/ase-dftfe
+pip install -e .
+```
+
+After installing, you can seamlessly import the calculator (`from dftfe import DFTFE`) in your Python scripts. Complete examples for running ground-state calculations and structural relaxations are provided in `interfaces/ase-dftfe/examples`.
+
 Contributing to DFT-FE
 ----------------------
 Learn more about contributing to DFT-FE's development [here](https://github.com/dftfeDevelopers/dftfe/wiki/Contributing).
@@ -61,6 +75,9 @@ More information
        - Prof. Phani Motamarri (Indian Institute of Science, India)
        - Nikhil Kodali         (Indian Institute of Science, India)    
        - Kartick Ramakrishnan  (Indian Institute of Science, India)
+
+   - ASE interface developers
+       - Mehul Darak           (Indian Institute of Science, India)
 
  - A complete list of the many authors that have contributed to DFT-FE can be found at [authors](authors).    
 
