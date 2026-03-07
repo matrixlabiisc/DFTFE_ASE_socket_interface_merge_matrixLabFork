@@ -888,7 +888,15 @@ namespace dftfe
         d_dftfeParamsPtr->parse_parameters(parameter_file_path,
                                            d_mpi_comm_parent,
                                            (verbosity >= 1),
-                                           "GS");
+                                           "GS",
+                                           ".",
+                                           verbosity,
+#ifdef DFTFE_WITH_DEVICE
+                                           useDevice
+#else
+                                           false
+#endif
+                                           );
 #ifdef DFTFE_WITH_DEVICE
         d_dftfeParamsPtr->useDevice = useDevice;
 #endif

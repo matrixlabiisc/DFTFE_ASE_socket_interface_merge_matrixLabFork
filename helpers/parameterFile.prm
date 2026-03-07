@@ -6,15 +6,15 @@ subsection Geometry
   set ATOMIC COORDINATES FILE=coordinates.inp 
   set DOMAIN VECTORS FILE=domainVectors.inp
   subsection Optimization
-    set ION FORCE=true
-    set CELL STRESS=true
+    set ION FORCE=false
+    set CELL STRESS=false
   end
 end
 
 subsection Boundary conditions
-  set PERIODIC1=true
-  set PERIODIC2=true
-  set PERIODIC3=true
+  set PERIODIC1=false
+  set PERIODIC2=false
+  set PERIODIC3=false
 end
 
 
@@ -31,7 +31,7 @@ subsection Finite element mesh parameters
   subsection Auto mesh generation parameters
     set ATOM BALL RADIUS      = 0.0
     set BASE MESH SIZE        = 0.0
-    set MESH SIZE AROUND ATOM = 0.5
+    set MESH SIZE AROUND ATOM = 1.0
     set MESH SIZE AT ATOM     = 0.0
   end
 end
@@ -54,14 +54,12 @@ end
 
 
 subsection SCF parameters
-  set TEMPERATURE=0
-  set TOLERANCE=0
+  set TEMPERATURE=500.0
+  set TOLERANCE=1e-5
   set MIXING PARAMETER=0.0
-  set MAXIMUM ITERATIONS=100
+  set MAXIMUM ITERATIONS=200
   subsection Eigen-solver parameters
-    set NUMBER OF KOHN-SHAM WAVEFUNCTIONS=20
-    set CHEBY WFC BLOCK SIZE=20
-    set WFC BLOCK SIZE=20
+    set NUMBER OF KOHN-SHAM WAVEFUNCTIONS=0
   end
 end
 
