@@ -1,3 +1,24 @@
+# ---------------------------------------------------------------------
+
+# Copyright (c) 2017-2025 The Regents of the University of Michigan and DFT-FE
+# authors.
+
+# This file is part of the DFT-FE code.
+
+# The DFT-FE code is free software; you can use it, redistribute
+# it, and/or modify it under the terms of the GNU Lesser General
+# Public License as published by the Free Software Foundation; either
+# version 2.1 of the License, or (at your option) any later version.
+# The full text of the license can be found in the file LICENSE at
+# the top level of the DFT-FE distribution.
+
+# ---------------------------------------------------------------------
+
+# @author Mehul Darak
+
+"""
+This is still under construction. Kindly not use.
+"""
 
 import numpy as np
 from ase import Atoms
@@ -18,8 +39,6 @@ def read_domain_vectors(filepath):
             if len(cell_bohr) == 3:
                 break
     
-    # Check manual to confirm unit. Handover implies DFT-FE uses Bohr internally usually.
-    # Assuming input file is Bohr.
     return np.array(cell_bohr) * Bohr
 
 def read_coordinates(filepath, cell=None):
