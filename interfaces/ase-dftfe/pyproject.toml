@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ase-dftfe-socket"
+version = "0.1.0"
+description = "Socket-based ASE interface for DFT-FE"
+readme = "README.md"
+authors = [
+  { name = "Mehul Darak", email = "mehul@example.com" }
+]
+license = { file = "LICENSE" }
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "ase>=3.22.0",
+    "numpy",
+]
+
+[project.urls]
+"Homepage" = "https://bitbucket.org/your-username/ase-dftfe-socket"
+
+[project.entry-points."ase.calculators"]
+dftfe = "dftfe:DFTFE"
+
+[tool.setuptools]
+py-modules = ["dftfe"]
