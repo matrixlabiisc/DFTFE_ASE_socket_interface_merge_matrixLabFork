@@ -1,9 +1,31 @@
-# Copyright (c) 2025 Mehul Darak
-# Licensed under the MIT License.
-#
-# This module interfaces with the DFT-FE electronic structure code,
-# which is licensed under the GNU LGPL v2.1 or later.
-# See the NOTICE file for details.
+# ---------------------------------------------------------------------
+
+# Copyright (c) 2017-2025 The Regents of the University of Michigan and DFT-FE
+# authors.
+
+# This file is part of the DFT-FE code.
+
+# The DFT-FE code is free software; you can use it, redistribute
+# it, and/or modify it under the terms of the GNU Lesser General
+# Public License as published by the Free Software Foundation; either
+# version 2.1 of the License, or (at your option) any later version.
+# The full text of the license can be found in the file LICENSE at
+# the top level of the DFT-FE distribution.
+
+# ---------------------------------------------------------------------
+
+# @author Mehul Darak
+
+"""
+The dftfe.py file is a Python interface for the DFT-FE code.
+It allows you to use DFT-FE as a calculator in the Atomic Simulation Environment (ASE).
+
+Client Server Architecture:
+- ASE acts as the client.
+- DFT-FE acts as the server.
+- The client sends requests to the server and receives responses.
+
+"""
 
 import socket
 import json
