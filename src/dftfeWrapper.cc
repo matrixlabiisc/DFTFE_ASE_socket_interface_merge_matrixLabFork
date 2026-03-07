@@ -413,10 +413,15 @@ namespace dftfe
                 for (dftfe::uInt irow = 0; irow < atomicNumbersUniqueVec.size();
                      ++irow)
                   {
-                    const std::string upffilePath =
-                      dftfePspPath + "/" +
-                      periodicTable.symbol(atomicNumbersUniqueVec[irow]) +
-                      ".upf";
+                    std::string upffilePath = dftfePspPath;
+                    if (dftfePspPath.find(".upf") == std::string::npos && 
+                        dftfePspPath.find(".psp8") == std::string::npos &&
+                        dftfePspPath.find(".UPF") == std::string::npos)
+                      {
+                        upffilePath = dftfePspPath + "/" +
+                                      periodicTable.symbol(atomicNumbersUniqueVec[irow]) +
+                                      ".upf";
+                      }
 
                     dftfePseudoFile
                       << std::to_string(atomicNumbersUniqueVec[irow]);
@@ -435,9 +440,15 @@ namespace dftfe
 
             for (dftfe::uInt i = 0; i < atomicNumbersUniqueVec.size(); i++)
               {
-                const std::string upffilePath =
-                  dftfePspPath + "/" +
-                  periodicTable.symbol(atomicNumbersUniqueVec[i]) + ".upf";
+                std::string upffilePath = dftfePspPath;
+                if (dftfePspPath.find(".upf") == std::string::npos && 
+                    dftfePspPath.find(".psp8") == std::string::npos &&
+                    dftfePspPath.find(".UPF") == std::string::npos)
+                  {
+                    upffilePath = dftfePspPath + "/" +
+                                  periodicTable.symbol(atomicNumbersUniqueVec[i]) +
+                                  ".upf";
+                  }
                 std::ifstream upffile(upffilePath);
                 double        valenceNumber = 0;
                 std::string   line;
