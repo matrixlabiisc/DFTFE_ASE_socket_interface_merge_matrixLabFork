@@ -622,7 +622,6 @@ namespace dftfe
             if (pbc.size() >= 3) {
               const std::string option = (pbc[0] || pbc[1] || pbc[2]) ? "true" : "false";
               // We only override CELL STRESS if all PBCs are false (it must be false)
-              // But wait, the previous logic explicitly disabled it when all were false
               if (pbc[0] == false && pbc[1] == false && pbc[2] == false)
                 {
                   cmd = "sed -i 's/set CELL STRESS=.*/set CELL STRESS=false/g' " + parameter_file_path;
@@ -828,14 +827,6 @@ namespace dftfe
               system(cmd.c_str());
             }
 
-            // "MAXIMUM NUMBER OF SCF ITERATIONS" is common request. Manual
-            // snippet didn't show it in "SCF parameters" list I saw (it was
-            // truncated?), but standard is "MAXIMUM ...". Checking snippet:
-            // "A.23 Parameters in section SCF parameters...". It wasn't there.
-            // It might be "MAX ITERATIONS" or similar.
-            // I'll assume standard DFT-FE param "MAXIMUM NUMBER OF SCF
-            // ITERATIONS". If it doesn't exist in template, sed won't hurt (no
-            // match). DFT-FE uses "MAXIMUM ITERATIONS" inside SCF parameters
             if (maxSCFIterations != -1) {
               cmd = "sed -i 's/set MAXIMUM ITERATIONS.*/set MAXIMUM ITERATIONS=" +
                     std::to_string(maxSCFIterations) + "/g' " +
