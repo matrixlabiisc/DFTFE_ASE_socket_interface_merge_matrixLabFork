@@ -39,7 +39,7 @@ cd interfaces/ase-dftfe
 pip install -e .
 ```
 
-After installing, you can seamlessly import the calculator (`from dftfe import DFTFE`) in your Python scripts. Complete examples for running ground-state calculations and structural relaxations are provided in `interfaces/ase-dftfe/examples`.
+After installing, you can seamlessly import the calculator (`from dftfe import DFTFE`) in your Python scripts. Complete examples for running ground-state calculations and structural relaxations are provided in `interfaces/ase-dftfe/examples`. User help and parameter mapping can be found in `interfaces/ase-dftfe/user_help`.
 
 Contributing to DFT-FE
 ----------------------
