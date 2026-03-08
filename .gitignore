@@ -44,9 +44,6 @@ main
 
 #build files
 /*build/
-/build_gpu/
-/build_local/
-/build_test/
 
 #Tex files
 *.aux
