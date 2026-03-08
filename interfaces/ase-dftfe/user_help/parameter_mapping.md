@@ -8,23 +8,18 @@ This document provides a comprehensive mapping between the parameters (kwargs) a
 | **`compute_forces`** | `ION FORCE` | `Geometry` > `Optimization` | Enables ionic force calculation. |
 | **`compute_stress`** | `CELL STRESS` | `Geometry` > `Optimization` | Enables stress tensor calculation. |
 | **`xc`** | `EXCHANGE CORRELATION TYPE` | `DFT functional parameters` | E.g., `GGA-PBE`. |
-| **`use_psp`** | `PSEUDOPOTENTIAL CALCULATION` | `DFT functional parameters` | Set to `true` for pseudopotentials (*Not tested yet*). |
-| **`spin_polarization`** | `SPIN POLARIZATION` | `DFT functional parameters` | Values: `0`, `1`, etc. (*Not tested yet*). |
-| **`total_magnetization`** | `TOTAL MAGNETIZATION` | `DFT functional parameters` | Floating point value (*Not tested yet*). |
 | **`psp_path`** | `PSEUDOPOTENTIAL FILE NAMES LIST` | `DFT functional parameters` | Path to `.upf` file or directory. Generates `pseudo.inp`. |
 | **`polynomial_order`** | `POLYNOMIAL ORDER` | `Finite element mesh parameters` | Finite-element polynomial order (e.g., `3` to `6`). |
 | **`atom_ball_radius`** | `ATOM BALL RADIUS` | `Auto mesh generation parameters` | Mesh resolution control. |
-| *Not Implemented Yet* | `BASE MESH SIZE` | `Auto mesh generation parameters` | To be added. |
 | **`mesh_size`** | `MESH SIZE AROUND ATOM` | `Auto mesh generation parameters` | Size of finite elements near atoms. |
-| *Not Implemented Yet* | `MESH SIZE AT ATOM` | `Auto mesh generation parameters` | To be added. |
 | **`use_time_reversal_symmetry`** | `USE TIME REVERSAL SYMMETRY` | `Brillouin zone k point sampling options` | Optimizes calculation for non-magnetic systems. |
 | **`mp_grid`** | `SAMPLING POINTS 1, 2, 3` | `Monkhorst-Pack (MP) grid generation` | Tuple `(k1, k2, k3)` for BZ grid. |
 | **`mp_grid_shift`** | `SAMPLING SHIFT 1, 2, 3` | `Monkhorst-Pack (MP) grid generation` | Tuple `(s1, s2, s3)` for shifting BZ grid. |
 | **`npkpt`** | `NPKPT` | `Parallelization` | Number of MPI pools for K-point parallelization. |
 | **`fermi_temp`** | `TEMPERATURE` | `SCF parameters` | Smearing temperature (Kelvin). |
 | **`tolerance`** | `TOLERANCE` | `SCF parameters` | Convergence target. |
-| **`scf_mixing`** | `MIXING PARAMETER` | `SCF parameters` | Float value for density mixing (*Not tested yet*). |
-| **`max_iterations`** | `MAXIMUM ITERATIONS` | `SCF parameters` | Limit on SCF loops (*Not tested yet*). |
+| **`scf_mixing`** | `MIXING PARAMETER` | `SCF parameters` | Float value for density mixing. |
+| **`max_iterations`** | `MAXIMUM ITERATIONS` | `SCF parameters` | Limit on SCF loops. |
 | **`num_kohn_sham`** | `NUMBER OF KOHN-SHAM WAVEFUNCTIONS`| `Eigen-solver parameters` | Set to `0` for auto-determination. |
 
 ### Parameters Managed Automatically by ASE
