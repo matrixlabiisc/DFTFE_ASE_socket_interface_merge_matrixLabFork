@@ -70,69 +70,140 @@ from dftfe import DFTFE
 
 ---
 
-# Basic Usage
+# Getting Started
 
-A minimal example using ASE with the DFT-FE socket interface:
+To use the interface, you construct an ASE `Atoms` object and assign the `DFTFE` calculator to it. 
+
+### 1. The Python Script (`co2_gs.py`)
+Below is a complete example of setting up a multi-element molecule ($CO_2$) and running it via the socket interface. Notice how we use a **dictionary** for `psp_path` to map exact pseudopotential file paths to each distinct element.
 
 ```python
 from ase import Atoms
+from ase.units import Bohr, Hartree
+import numpy as np
 from dftfe import DFTFE
 
-atoms = Atoms("O2", positions=[[0,0,0],[1.2,0,0]])
+# 1. Define Geometry
+box_dims_bohr = np.array([40.0, 40.0, 40.0])
+cell_ang = np.diag(box_dims_bohr) * Bohr
+
+center = box_dims_bohr / 2.0
+bond_bohr = 2.19
+rel_pos_bohr = np.array([
+    [0.0, 0.0, 0.0],          # C
+    [-bond_bohr, 0.0, 0.0],   # O
+    [ bond_bohr, 0.0, 0.0]    # O
+])
+pos_ang = (center + rel_pos_bohr) * Bohr
+
+atoms = Atoms(
+    symbols=['C', 'O', 'O'],
+    positions=pos_ang,
+    cell=cell_ang,
+    pbc=[False, False, False]
+)
+
+# 2. Define exactly where the UPF files are located for each element
+multi_element_psp_dict = {
+    "C": "/absolute/path/to/C.upf",
+    "O": "/absolute/path/to/O.upf"
+}
+
+# 3. Setup Calculator
+dftfe_bin = "/absolute/path/to/dftfe"
+run_cmd = f"mpirun -np 8 {dftfe_bin}"
 
 calc = DFTFE(
-    command="/path/to/dftfe",
-    xc="GGA-PBE",
-    mesh_size=0.6
+    command=run_cmd,
+    psp_path=multi_element_psp_dict,
+    
+    # Mesh and Convergence parameters
+    mesh_size=1.0,          
+    polynomial_order=6,     
+    atom_ball_radius=3.0,   
+    tolerance=5e-5,         
+    num_kohn_sham=20,       
+    xc='GGA-PBE',
+
+    # ASE debugging controls
+    keep_scratch=True, # Leaves the DFT-FE scratch folder undeleted for inspection
+    debug_timing=True, # Prints out the timing overhead between ASE and DFT-FE
+
+    use_device=True, # Set to False if compiled only for CPU
+    verbosity=2,
+    log_file="co2_gs_socket.log",
 )
 
 atoms.calc = calc
-
 energy = atoms.get_potential_energy()
-print("Energy:", energy)
+print(f"Energy (Ha): {energy / Hartree}")
 ```
+
+> **Note on `psp_path`**:
+> If your pseudopotentials share a single folder and are named perfectly as `<ElementSymbol>.upf` (e.g. `C.upf`, `O.upf`), you can simply provide the absolute directory string instead of a dictionary: `psp_path="/path/to/psp_directory"`.
+
+---
+
+### 2. The SLURM Batch Script (`run_gs_co2.slurm`)
+
+Because the Python script itself launches `mpirun`, you do **not** run the python script with `mpirun`. Instead, you just invoke python natively and let it spawn the DFT-FE MPI processes in the background.
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=ase_dftfe_co2
+#SBATCH --nodes=1
+#SBATCH --ntasks=8
+#SBATCH --cpus-per-task=1
+#SBATCH --gres=gpu:8
+#SBATCH --time=03:00:00
+
+# Make sure all libraries and MPI modules are loaded
+module load spack
+module load openmpi/5.0.6-gcc-13.3.0-ytficip 
+module load nccl/2.23.4-1-gcc-13.3.0-xyspmp2 
+module load gdrcopy/2.4.1-gcc-13.3.0-dvwa323
+export LIBRARY_PATH="/path/to/linAlgLibs/install/lib:$LIBRARY_PATH"
+
+export OMP_NUM_THREADS=1
+export DEAL_II_NUM_THREADS=1
+export DFTFE_NUM_THREADS=1
+
+# Activate Python environment containing ASE and DFTFE 
+source ~/.venvs/ase-env/bin/activate
+
+# Execute natively
+python co2_gs.py
+```
+
+---
+
+# Debugging and Tips
+
+When running iterative loops (like MD or NEB), if a calculation fails or crashes silently, the `DFTFE` calculator provides two built-in tools to help you identify the problem:
+
+1. **`keep_scratch=True`**
+   By default, the ASE persistent socket creates a temporary `dftfeScratch_<port>` directory and cleans it up when the script exits. Passing `keep_scratch=True` leaves this directory intact so you can manually inspect `parameterFile.prm`, `pseudo.inp`, and `coordinates.inp` to verify that ASE correctly passed your parameters over the socket.
+
+2. **`debug_timing=True`**
+   If you believe the socket connection is lagging or the Python wrapping is adding too much overhead, `debug_timing=True` will print an explicit breakdown at the end of each `calculate()` loop showing exactly how many seconds were spent strictly inside the C++ execution versus how many seconds were spent in Python packing/unpacking the JSON serialization.
 
 ---
 
 # Examples
 
-Example scripts demonstrating typical workflows are available in:
+A comprehensive suite of example scripts covering single-element, multi-element, real-space, complex-space, CPU, and GPU workflows are available in the repository at:
 
 ```
-examples/
+interfaces/ase-dftfe/examples/
 ```
-
-Current examples include:
-
-* Ground-state energy calculation of O2 molecule
-* Relaxation of O2 molecule
 
 ---
 
 # Supported Parameters
 
-The calculator currently supports the parameters demonstrated in:
+The Python interface translates arguments directly into DFT-FE parameters. For a comprehensive mapping of all supported ASE Python variables to their corresponding native DFT-FE parameters (as they appear in `parameterFile.prm`), please review the full **[Parameter Mapping Guide](user_help/parameter_mapping.md)**.
 
-```
-examples/o2_gs.py
-```
-
-For a comprehensive mapping of all supported ASE Python variables to their corresponding native DFT-FE parameters (as they appear in `parameterFile.prm`), please review the full **[Parameter Mapping Guide](user_help/parameter_mapping.md)**.
-
-Additional parameters and configuration options will be added in future releases. We are rapidly developing this interface and will keep updating the documentation as we go.
-
----
-
-# Project Status
-
-This interface is under active development.
-
-Planned improvements include:
-
-* Expanded parameter support
-* Improved documentation
-* Additional examples
-* Robust testing across different simulation workflows
+A few notable parameters managed safely by default include `compute_forces=True` (ION FORCE) and `compute_stress=False` (CELL STRESS), which dynamically disable themselves if Period Boundary Conditions (PBCs) are absent to prevent solver crashes.
 
 ---
 

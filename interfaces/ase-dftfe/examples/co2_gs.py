@@ -3,6 +3,8 @@ from ase.units import Bohr, Hartree
 import numpy as np
 from dftfe import DFTFE
 
+# Note that this is just a test to show that the ASE interface can handle multi-element configurations with exact file paths!
+# The CO2 example can be more complex, but it's not necessary for this test.
 # =========================
 # System Setup (CO2 Molecule)
 # =========================
