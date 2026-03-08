@@ -38,11 +38,11 @@ atoms = Atoms(
 
 # Using passing a dictionary of exact file paths for multiple elements!
 multi_element_psp_dict = {
-    "C": "/home/pa01/Mehul/DFTFE/interfaces/ase-dftfe/psp_library/C.upf",
-    "O": "/home/pa01/Mehul/DFTFE/interfaces/ase-dftfe/psp_library/O.upf"
+    "C": "/DFTFE/interfaces/ase-dftfe/psp_library/C.upf",
+    "O": "/DFTFE/interfaces/ase-dftfe/psp_library/O.upf"
 }
 
-dftfe_bin = "/home/pa01/Mehul/DFTFE/build_gpu/release/real/dftfe"
+dftfe_bin = "/DFTFE/build_gpu/release/real/dftfe"
 run_cmd = f"mpirun -np 8 {dftfe_bin}"
 
 calc = DFTFE(
