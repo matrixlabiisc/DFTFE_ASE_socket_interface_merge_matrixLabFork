@@ -1,3 +1,4 @@
+Note: This document is for contributors to the ASE-DFTFE interface to understand workflow of the ASE-DFTFE interface.
 # Comprehensive Guide to the ASE-DFTFE Interface
 
 This document maps the visual workflow of the ASE-DFTFE interface to the underlying code, logic, and file operations. Use the diagram below as your primary map, and refer to the numbered sections for code-level details.
