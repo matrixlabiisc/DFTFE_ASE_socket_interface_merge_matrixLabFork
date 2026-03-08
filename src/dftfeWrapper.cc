@@ -354,6 +354,7 @@ namespace dftfe
     const dftfe::Int  maxSCFIterations,
     const dftfe::Int  dispersionCorrectionType,
     const dftfe::Int  pseudopotentialCalculation,
+    const std::string pseudopotentialFilename,
     const dftfe::Int  verbosity,
     const bool        setDeviceToMPITaskBindingInternally,
     const bool        keepScratch,
@@ -402,7 +403,30 @@ namespace dftfe
                       atomicNumbersUniqueVec.begin());
 
 
-            const std::string dftfePspPath(getenv("DFTFE_PSP_PATH"));
+            // Parse dictionary format strings for multi-element pseudo paths
+            std::map<std::string, std::string> exactFileMap;
+            std::string dftfePspPath = pseudopotentialFilename;
+            if (dftfePspPath.find("DICT|") == 0)
+              {
+                std::string dictStr = dftfePspPath.substr(5);
+                std::stringstream ss(dictStr);
+                std::string pair;
+                while (std::getline(ss, pair, '|'))
+                  {
+                    size_t colonPos = pair.find(':');
+                    if (colonPos != std::string::npos)
+                      {
+                        std::string sym = pair.substr(0, colonPos);
+                        std::string path = pair.substr(colonPos + 1);
+                        exactFileMap[sym] = path;
+                      }
+                  }
+              }
+            else if (dftfePspPath == "Unprovided" || dftfePspPath.empty())
+              {
+                const char* envPath = getenv("DFTFE_PSP_PATH");
+                if (envPath) dftfePspPath = std::string(envPath);
+              }
 
             pseudoUtils::PeriodicTable periodicTable;
             const std::string          dftfePseudoFileName =
@@ -413,14 +437,22 @@ namespace dftfe
                 for (dftfe::uInt irow = 0; irow < atomicNumbersUniqueVec.size();
                      ++irow)
                   {
-                    std::string upffilePath = dftfePspPath;
-                    if (dftfePspPath.find(".upf") == std::string::npos && 
-                        dftfePspPath.find(".psp8") == std::string::npos &&
-                        dftfePspPath.find(".UPF") == std::string::npos)
+                    std::string sym = periodicTable.symbol(atomicNumbersUniqueVec[irow]);
+                    std::string upffilePath;
+                    
+                    if (exactFileMap.find(sym) != exactFileMap.end())
                       {
-                        upffilePath = dftfePspPath + "/" +
-                                      periodicTable.symbol(atomicNumbersUniqueVec[irow]) +
-                                      ".upf";
+                        upffilePath = exactFileMap[sym];
+                      }
+                    else
+                      {
+                        upffilePath = dftfePspPath;
+                        if (dftfePspPath.find(".upf") == std::string::npos && 
+                            dftfePspPath.find(".psp8") == std::string::npos &&
+                            dftfePspPath.find(".UPF") == std::string::npos)
+                          {
+                            upffilePath = dftfePspPath + "/" + sym + ".upf";
+                          }
                       }
 
                     dftfePseudoFile
@@ -440,14 +472,21 @@ namespace dftfe
 
             for (dftfe::uInt i = 0; i < atomicNumbersUniqueVec.size(); i++)
               {
-                std::string upffilePath = dftfePspPath;
-                if (dftfePspPath.find(".upf") == std::string::npos && 
-                    dftfePspPath.find(".psp8") == std::string::npos &&
-                    dftfePspPath.find(".UPF") == std::string::npos)
+                std::string sym = periodicTable.symbol(atomicNumbersUniqueVec[i]);
+                std::string upffilePath;
+                if (exactFileMap.find(sym) != exactFileMap.end())
                   {
-                    upffilePath = dftfePspPath + "/" +
-                                  periodicTable.symbol(atomicNumbersUniqueVec[i]) +
-                                  ".upf";
+                    upffilePath = exactFileMap[sym];
+                  }
+                else
+                  {
+                    upffilePath = dftfePspPath;
+                    if (dftfePspPath.find(".upf") == std::string::npos && 
+                        dftfePspPath.find(".psp8") == std::string::npos &&
+                        dftfePspPath.find(".UPF") == std::string::npos)
+                      {
+                        upffilePath = dftfePspPath + "/" + sym + ".upf";
+                      }
                   }
                 std::ifstream upffile(upffilePath);
                 double        valenceNumber = 0;

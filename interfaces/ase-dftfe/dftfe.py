@@ -67,6 +67,7 @@ class DFTFESocketCalculator(Calculator):
                  max_scf_iterations=None,
                  dispersion_correction_type=None,
                  pseudopotential_calculation=None,
+                 psp_path=None,
                  pseudopotential_filename=None,
                  verbosity=None,
                  use_device=False,
@@ -113,7 +114,12 @@ class DFTFESocketCalculator(Calculator):
         self.max_scf_iterations = max_scf_iterations
         self.dispersion_correction_type = dispersion_correction_type
         self.pseudopotential_calculation = pseudopotential_calculation
-        self.pseudopotential_filename = pseudopotential_filename
+        
+        if isinstance(psp_path, dict):
+            self.pseudopotential_filename = "DICT|" + "|".join([f"{k}:{v}" for k, v in psp_path.items()])
+        else:
+            self.pseudopotential_filename = psp_path if psp_path is not None else pseudopotential_filename
+            
         self.keep_scratch = keep_scratch
         self.compute_forces = compute_forces
         self.compute_stress = compute_stress

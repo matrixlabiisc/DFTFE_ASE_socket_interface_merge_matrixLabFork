@@ -228,6 +228,7 @@ namespace dftfe
       const dftfe::Int  maxSCFIterations           = -1,
       const dftfe::Int  dispersionCorrectionType   = -1,
       const dftfe::Int  pseudopotentialCalculation = -1,
+      const std::string pseudopotentialFilename    = "Unprovided",
 
            const dftfe::Int verbosity                           = -1,
            const bool       setDeviceToMPITaskBindingInternally = false,

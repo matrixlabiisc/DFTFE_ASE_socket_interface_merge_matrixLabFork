@@ -67,6 +67,7 @@ namespace dftfe
       dftfe::Int  &max_scf_iterations,
       dftfe::Int  &dispersion_correction_type,
       dftfe::Int  &pseudopotential_calculation,
+      std::string &pseudopotential_filename,
       dftfe::Int  &verbosity,
       bool        &use_device,
       bool        &keep_scratch,   // New parameter

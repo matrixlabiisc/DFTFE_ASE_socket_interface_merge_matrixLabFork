@@ -343,6 +343,7 @@ namespace dftfe
                               dftfe::Int  &max_scf_iterations,
                               dftfe::Int  &dispersion_correction_type,
                               dftfe::Int  &pseudopotential_calculation,
+                              std::string &pseudopotential_filename,
                               dftfe::Int  &verbosity,
                               bool        &use_device,
                               bool        &keep_scratch,   // New parameter
@@ -404,6 +405,8 @@ namespace dftfe
       parse_scalar<dftfe::Int>(json, "dispersion_correction_type", -1);
     pseudopotential_calculation =
       parse_scalar<dftfe::Int>(json, "pseudopotential_calculation", -1);
+    pseudopotential_filename =
+      parse_string(json, "pseudopotential_filename", "Unprovided");
 
     verbosity  = parse_scalar<dftfe::Int>(json, "verbosity", -1);
     use_device = parse_scalar<bool>(json, "use_device", false);
@@ -544,6 +547,7 @@ namespace dftfe
         dftfe::Int  max_scf_iterations;
         dftfe::Int  dispersion_correction_type;
         dftfe::Int  pseudopotential_calculation;
+        std::string pseudopotential_filename;
         bool        keep_scratch;   // New variable
         bool        compute_forces; // New variable
         bool        compute_stress; // New variable
@@ -577,6 +581,7 @@ namespace dftfe
                       max_scf_iterations,
                       dispersion_correction_type,
                       pseudopotential_calculation,
+                      pseudopotential_filename,
                       verbosity,
                       use_device,
                       keep_scratch,
@@ -734,6 +739,7 @@ namespace dftfe
                        max_scf_iterations,
                        dispersion_correction_type,
                        pseudopotential_calculation,
+                       pseudopotential_filename,
                        verbosity,
                        use_device,   // setDeviceToMPITaskBindingInternally
                        keep_scratch, // keepScratch
