@@ -70,6 +70,58 @@ from dftfe import DFTFE
 
 ---
 
+# Quick-Start for Collaborators / Generic CPU Clusters
+
+If you are a collaborator setting this up on a new machine (like a remote CPU-only cluster) where DFT-FE is already installed or being compiled fresh, follow these 3 exact steps:
+
+1. **Pull and Compile the Latest Branch**: 
+   Ensure your local repository is updated to the `socket_interface_merge` (or `publicGithubDevelop`) branch containing this ASE interface. Simply compile DFT-FE as you normally would (e.g. `mkdir build_local && cd build_local && cmake .. && make -j 8`). The Socket interface is natively integrated and enabled by default; no special compiler flags are needed. Note the absolute path to the generated `dftfe` executable (e.g. `/path/to/DFTFE/build_local/.../dftfe`).
+
+2. **Install the ASE Python Package**:
+   Activate your Python environment. Ensure ASE is installed (`pip install ase`). Then navigate to the ASE interface directory inside the DFT-FE repository and install the calculator:
+   ```bash
+   cd DFTFE/interfaces/ase-dftfe
+   pip install -e .
+   ```
+
+3. **Configure the Python Script for CPU**:
+   When writing your script (see "Getting Started" below), you must ensure two parameters correctly point to your local environment:
+   * **`command`**: This must point specifically to the `dftfe` executable you compiled in step 1. Example: `run_cmd = f"mpirun -np 8 /absolute/path/to/your/build_local/dftfe"`
+   * **`use_device=False`**: If you are running on a CPU-only cluster, you **must explicitly set `use_device=False`** in the `DFTFE(...)` calculator instantiation. If you leave this out or set it to `True`, DFT-FE will attempt to allocate memory on non-existent GPUs and the solver will crash immediately.
+
+4. Slurm or similar scripts:
+An example slurm script is provided below:
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=ase_dftfe_co2
+#SBATCH --nodes=1
+#SBATCH --ntasks=8
+#SBATCH --cpus-per-task=1
+#SBATCH --gres=gpu:8
+#SBATCH --time=03:00:00
+
+# Make sure all libraries and MPI modules are loaded
+module load spack
+module load openmpi/5.0.6-gcc-13.3.0-ytficip 
+module load nccl/2.23.4-1-gcc-13.3.0-xyspmp2 
+module load gdrcopy/2.4.1-gcc-13.3.0-dvwa323
+export LIBRARY_PATH="/path/to/linAlgLibs/install/lib:$LIBRARY_PATH"
+
+export OMP_NUM_THREADS=1
+export DEAL_II_NUM_THREADS=1
+export DFTFE_NUM_THREADS=1
+
+# Activate Python environment containing ASE and DFTFE 
+source ~/.venvs/ase-env/bin/activate
+
+# Execute natively
+python /path/to/your/script/co2_gs.py
+```
+Note that the python script is executed natively and not with mpirun. The python script will spawn the DFT-FE MPI processes in the background and it contains mpirun in itself as the `command` parameter. This is done to avoid any nested mpirun issues since the ASE calculator is already running in a MPI process.
+
+---
+
 # Getting Started
 
 To use the interface, you construct an ASE `Atoms` object and assign the `DFTFE` calculator to it. 
