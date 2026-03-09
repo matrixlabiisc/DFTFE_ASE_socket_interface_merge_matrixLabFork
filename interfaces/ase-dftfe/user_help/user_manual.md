@@ -144,7 +144,7 @@ calc = DFTFE(
     polynomial_order=6,     
     atom_ball_radius=3.0,   
     tolerance=5e-5,         
-    num_kohn_sham=20,       
+    num_eigen_states=20,       
     xc='GGA-PBE',
 
     # ASE / Socket Options
@@ -235,6 +235,76 @@ source ~/.venvs/ase-env/bin/activate
 
 # Launch single python orchestrator, mpirun is handled intrinsically
 python relax_graphene.py
+```
+
+### 3. Phonon Calculations (Copper Example)
+
+The socket interface is exceptionally powerful for phonon calculations, which require multiple force evaluations on slightly displaced supercells. Because the DFT-FE process stays alive, the significant overhead of initialization and mesh generation is only performed once.
+
+Below is an example (`phonon_cu.py`) using **Phonopy** to calculate the phonon band structure of Copper (Cu).
+
+```python
+from ase import Atoms
+from ase.build import bulk
+from dftfe import DFTFE
+from phonopy import Phonopy
+from phonopy.structure.atoms import PhonopyAtoms
+import numpy as np
+
+# 1. Setup Structure (ASE bulk)
+structure = bulk("Cu", "fcc", a=3.6)
+
+# 2. Setup DFT-FE Calculator
+calc = DFTFE(
+    command="mpirun -np 16 /path/to/dftfe",
+    psp_path="/path/to/Cu.upf",
+    mesh_size=1.0,
+    polynomial_order=6,
+    tolerance=1e-6,
+    num_eigen_states=20,
+    compute_forces=True, # Crucial for phonons
+    use_device=True
+)
+
+# 3. Phonopy Supercell & Displacements
+ph_atoms = PhonopyAtoms(symbols=structure.symbols, 
+                        positions=structure.positions, 
+                        cell=structure.cell)
+
+phonons = Phonopy(ph_atoms, supercell_matrix=[[3,0,0],[0,3,0],[0,0,3]])
+phonons.generate_displacements(distance=0.01)
+supercells = phonons.supercells_with_displacements
+
+# 4. Force Calculation Loop (Persistent Socket)
+sets_of_forces = []
+for sc in supercells:
+    sc_ase = Atoms(symbols=sc.symbols, positions=sc.positions, 
+                   cell=sc.cell, pbc=True)
+    sc_ase.calc = calc
+    sets_of_forces.append(sc_ase.get_forces())
+
+# 5. Post-process with Phonopy
+phonons.forces = np.array(sets_of_forces)
+phonons.produce_force_constants()
+phonons.auto_band_structure()
+fig = phonons.plot_band_structure()
+fig.savefig("copper_phonons.png")
+```
+
+To run this on a GPU cluster using SLURM (`run_phonon_cu.slurm`):
+
+```bash
+#!/bin/bash
+#SBATCH --nodes=2
+#SBATCH --ntasks=16
+#SBATCH --gres=gpu:8
+#SBATCH --time=03:00:00
+
+module load openmpi/5.0.6-gcc-13.3.0-ytficip 
+export LIBRARY_PATH="/path/to/linAlgLibs/install/lib:$LIBRARY_PATH"
+
+source ~/.venvs/ase-env/bin/activate
+python phonon_cu.py
 ```
 
 ---
