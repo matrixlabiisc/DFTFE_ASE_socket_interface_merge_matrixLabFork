@@ -20,7 +20,7 @@ This document provides a comprehensive mapping between the parameters (kwargs) a
 | **`tolerance`** | `TOLERANCE` | `SCF parameters` | Convergence target. |
 | **`scf_mixing`** | `MIXING PARAMETER` | `SCF parameters` | Float value for density mixing. |
 | **`max_iterations`** | `MAXIMUM ITERATIONS` | `SCF parameters` | Limit on SCF loops. |
-| **`num_kohn_sham`** | `NUMBER OF KOHN-SHAM WAVEFUNCTIONS`| `Eigen-solver parameters` | Set to `0` for auto-determination. |
+| **`num_eigen_states`** | `NUMBER OF KOHN-SHAM WAVEFUNCTIONS`| `Eigen-solver parameters` | Set to `0` for auto-determination. |
 
 ### Parameters Managed Automatically by ASE
 The following DFT-FE parameters are structurally abstracted by ASE and require no manual specification using the Python interface:

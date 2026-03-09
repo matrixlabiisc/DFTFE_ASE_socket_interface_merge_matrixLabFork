@@ -342,7 +342,7 @@ namespace dftfe
     const double                           tolerance,
     const std::string                      xc,
     const double                           atomBallRadius,
-    const dftfe::uInt                      numKohnSham,
+    const dftfe::uInt                      numEigenStates,
     const std::string                      orthogonalizationType,
     // New parameters
     const dftfe::uInt wfcBlockSize,
@@ -890,11 +890,11 @@ namespace dftfe
               system(cmd.c_str());
             }
 
-            if (numKohnSham != 999999)
+            if (numEigenStates != 999999)
               {
                 cmd =
                   "sed -i 's/set NUMBER OF KOHN-SHAM WAVEFUNCTIONS.*/set NUMBER OF KOHN-SHAM WAVEFUNCTIONS=" +
-                  std::to_string(numKohnSham) + "/g' " + parameter_file_path;
+                  std::to_string(numEigenStates) + "/g' " + parameter_file_path;
                 system(cmd.c_str());
               }
 

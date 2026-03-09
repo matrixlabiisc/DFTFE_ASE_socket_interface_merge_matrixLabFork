@@ -53,7 +53,7 @@ class DFTFESocketCalculator(Calculator):
                  tolerance=None,
                  xc=None, # Exchange Correlation Type
                  atom_ball_radius=None, # New explicit parameter
-                 num_kohn_sham=None, # New explicit parameter (0 = auto)
+                 num_eigen_states=None, # New explicit parameter (0 = auto)
                  orthogonalization_type=None, # New explicit parameter
                  # New parameters added in expansion
                  wfc_block_size=None, # New explicit parameter (0 = auto)
@@ -100,8 +100,7 @@ class DFTFESocketCalculator(Calculator):
         self.tolerance = tolerance
         self.xc = xc
         self.atom_ball_radius = atom_ball_radius
-        self.num_kohn_sham = num_kohn_sham
-        self.num_kohn_sham = num_kohn_sham
+        self.num_eigen_states = num_eigen_states
         self.orthogonalization_type = orthogonalization_type
         
         # New parameters
@@ -240,7 +239,7 @@ class DFTFESocketCalculator(Calculator):
             "tolerance": self.tolerance,
             "xc": self.xc,
             "atom_ball_radius": self.atom_ball_radius,
-            "num_kohn_sham": self.num_kohn_sham,
+            "num_eigen_states": self.num_eigen_states,
             "orthogonalization_type": self.orthogonalization_type,
             "wfc_block_size": self.wfc_block_size,
             "cheby_wfc_block_size": self.cheby_wfc_block_size,

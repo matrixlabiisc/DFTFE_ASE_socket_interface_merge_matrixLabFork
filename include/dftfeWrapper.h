@@ -216,7 +216,7 @@ namespace dftfe
       const double                   tolerance              = -1.0,
       const std::string              xc                     = "Unprovided",
       const double                   atomBallRadius         = -1.0,
-      const dftfe::uInt              numKohnSham            = 999999,
+      const dftfe::uInt              numEigenStates         = 999999,
       const std::string              orthogonalizationType  = "Unprovided",
       // New parameters
       const dftfe::uInt wfcBlockSize               = 999999,
