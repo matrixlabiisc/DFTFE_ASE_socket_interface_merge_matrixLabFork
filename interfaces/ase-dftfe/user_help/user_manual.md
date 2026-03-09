@@ -1,107 +1,80 @@
 # ASE–DFT-FE Socket Interface
 
-This submodule provides an **ASE (Atomic Simulation Environment)** calculator that enables communication with **DFT-FE** through a TCP socket interface.
+This repository provides an **ASE (Atomic Simulation Environment)** calculator designed to interface natively with **DFT-FE** over a TCP socket connection. 
 
-The socket-based workflow allows the **DFT-FE process to remain persistent**, eliminating repeated initialization costs and enabling efficient iterative workflows such as:
-
-- Geometry optimization
-- Molecular dynamics
-- Active learning loops
-- Structure relaxation pipelines
-
-The interface is designed for **high-performance and large-scale simulations** while maintaining compatibility with the standard ASE calculator API.
+By operating via a socket, the DFT-FE client remains persistent throughout the entire calculation suite. This completely eliminates the startup and initialization overhead associated with launching large MPI parallel jobs for every calculation step, enabling exceptionally fast iterative workflows including active learning loops, geometry optimizations, molecular dynamics, and more.
 
 ---
 
-# Features
+## Table of Contents
 
-- ASE-compatible calculator for **DFT-FE**
-- **Socket-based communication** with persistent DFT-FE runtime
-- Reduced initialization overhead for iterative calculations
-- Compatible with ASE workflows including but not limited to:
-  - Geometry optimization
-  - Molecular dynamics
-  - Structure relaxation
-  - Automated pipelines
+- [Features and Submodules](#features--submodules)
+- [Prerequisites and Installation](#prerequisites--installation)
+- [Cluster Deployment (CPU and GPU)](#cluster-deployment-cpu--gpu)
+- [Getting Started](#getting-started)
+- [Machine Learning Dataset Generation](#machine-learning-dataset-generation)
+- [Debugging and Tips](#debugging-and-tips)
+- [Resources and Contact](#resources--contact)
 
 ---
 
-# Prerequisites
+## Features and Submodules
 
-Before installing this package, ensure the following dependencies are available.
+The interface is engineered for both robust, large-scale HPC simulations and seamless Machine Learning pipeline integration:
+- **`dftfe.py`**: The core calculator class handling live TCP data serialization and native parameter mapping.
+- **`utils/`**: Utilities for deep ML integration. Automatically constructs ML-ready datasets (`.extxyz`) natively handling unit conversions (Hartree/Bohr $\rightarrow$ eV/Å) from live calculations or static output logs.
+- **`examples/`**: Extensive repository of example configurations and SLURM execution scripts spanning single-element, multi-element, real-space, and CPU/GPU contexts.
 
-## Python
-- Python **3.8 or later**
+---
 
-## ASE
-Install ASE via pip:
+## Prerequisites and Installation
+
+### 1. Requirements
+
+- **Python**: 3.8 or newer.
+- **ASE**: (`pip install ase`)
+- **DFT-FE**: Ensure you have pulled a branch supporting the generic socket-driver (e.g. `publicGithubDevelop`). You must retain the absolute built path to the resulting `dftfe` executable.
+
+### 2. Package Installation
+
+Navigate into the interface directory within your cloned DFT-FE repository and install the calculator package directly into your active Python environment:
 
 ```bash
-pip install ase
-````
-
-## DFT-FE
-
-DFT-FE must be compiled with the required `SocketDriver` implementation (which is enabled by default in recent versions with socket support).
-
-After compilation, ensure that the `dftfe` executable is either:
-
-* available in your `PATH`, or
-* referenced explicitly when initializing the calculator. -> See examples for implementation.
-
----
-
-# Installation
-
-This Python package is bundled natively within the DFT-FE repository. To install it in your Python environment, simply navigate to this directory (where this file resides) and install it via pip in editable mode:
-
-```bash
-cd interfaces/ase-dftfe
+cd DFTFE/interfaces/ase-dftfe
 pip install -e .
 ```
 
-Installing in editable mode registers the calculator with your Python environment.
-
-You can then import the calculator using:
-
-```python
-from dftfe import DFTFE
-```
+You can now use the calculator anywhere comprehensively via `from dftfe import DFTFE`.
 
 ---
 
-# Quick-Start for Collaborators / Generic CPU Clusters
+## Cluster Deployment (CPU and GPU)
 
-If you are a collaborator setting this up on a new machine (like a remote CPU-only cluster) where DFT-FE is already installed or being compiled fresh, follow these 3 exact steps:
+When deploying this interface to HPC clusters, pay close attention to the following architectural configurations. 
 
-1. **Pull and Compile the Latest Branch**: 
-   Ensure your local repository is updated to the `socket_interface_merge` (or `publicGithubDevelop`) branch containing this ASE interface. Simply compile DFT-FE as you normally would (e.g. `mkdir build_local && cd build_local && cmake .. && make -j 8`). The Socket interface is natively integrated and enabled by default; no special compiler flags are needed. Note the absolute path to the generated `dftfe` executable (e.g. `/path/to/DFTFE/build_local/.../dftfe`).
+1. **Compiling the Engine**: 
+   Compile DFT-FE as standard for your target architecture (`cmake .. and make -j`). The socket listener is statically integrated and enabled automatically; there are no special compilation flags required. Note the absolute path of your compiled binary (e.g., `/path/to/build_gpu/release/real/dftfe`).
 
-2. **Install the ASE Python Package**:
-   Activate your Python environment. Ensure ASE is installed (`pip install ase`). Then navigate to the ASE interface directory inside the DFT-FE repository and install the calculator:
-   ```bash
-   cd DFTFE/interfaces/ase-dftfe
-   pip install -e .
-   ```
+2. **Calculator Instantiation and Device Selection**:
+   When writing your ASE python script, you must carefully configure the target device to stop DFT-FE from faulting on mismatched hardware:
+   - **For CPU-Only Clusters**: Ensure you explicitly declare `use_device=False` inside the `DFTFE(...)` constructor. If this is left true, the solver will attempt to access missing CUDA architectures and crash instantly.
+   - **For GPU Clusters**: Toggle `use_device=True`. Ensure you pass the GPU-specific compilation of DFT-FE.
 
-3. **Configure the Python Script for CPU**:
-   When writing your script (see "Getting Started" below), you must ensure two parameters correctly point to your local environment:
-   * **`command`**: This must point specifically to the `dftfe` executable you compiled in step 1. Example: `run_cmd = f"mpirun -np 8 /absolute/path/to/your/build_local/dftfe"`
-   * **`use_device=False`**: If you are running on a CPU-only cluster, you **must explicitly set `use_device=False`** in the `DFTFE(...)` calculator instantiation. If you leave this out or set it to `True`, DFT-FE will attempt to allocate memory on non-existent GPUs and the solver will crash immediately.
+3. **MPI Launching Strategy**:
+   **Do not run your python scripts with `mpirun`.** The ASE calculator orchestrates the MPI subsystem natively. You will invoke standard `python your_script.py`, and the script will internally spawn the entire DFT-FE parallel task pool using the string you provide to the `command=` attribute.
 
-4. Slurm or similar scripts:
-An example slurm script is provided below:
+### Example SLURM Configuration
 
 ```bash
 #!/bin/bash
-#SBATCH --job-name=ase_dftfe_co2
+#SBATCH --job-name=ase_dftfe_sim
 #SBATCH --nodes=1
 #SBATCH --ntasks=8
 #SBATCH --cpus-per-task=1
 #SBATCH --gres=gpu:8
 #SBATCH --time=03:00:00
 
-# Make sure all libraries and MPI modules are loaded
+# 1. Load Spack, OpenMPI, and specific architectural modules
 module load spack
 module load openmpi/5.0.6-gcc-13.3.0-ytficip 
 module load nccl/2.23.4-1-gcc-13.3.0-xyspmp2 
@@ -112,22 +85,20 @@ export OMP_NUM_THREADS=1
 export DEAL_II_NUM_THREADS=1
 export DFTFE_NUM_THREADS=1
 
-# Activate Python environment containing ASE and DFTFE 
+# 2. Activate Python environment (containing ASE)
 source ~/.venvs/ase-env/bin/activate
 
-# Execute natively
-python /path/to/your/script/co2_gs.py
+# 3. Execute Natively (The script manages mpirun automatically)
+python sim_gs.py
 ```
-Note that the python script is executed natively and not with mpirun. The python script will spawn the DFT-FE MPI processes in the background and it contains mpirun in itself as the `command` parameter. This is done to avoid any nested mpirun issues since the ASE calculator is already running in a MPI process.
 
 ---
 
-# Getting Started
+## Getting Started
 
-To use the interface, you construct an ASE `Atoms` object and assign the `DFTFE` calculator to it. 
+To execute a calculation, construct your standard ASE `Atoms` object and assign the instantiated `DFTFE` calculator to it. Below is an example demonstrating a fully iterative calculation using a Carbon Dioxide ($CO_2$) configuration. 
 
-### 1. The Python Script (`co2_gs.py`)
-Below is a complete example of setting up a multi-element molecule ($CO_2$) and running it via the socket interface. Notice how we use a **dictionary** for `psp_path` to map exact pseudopotential file paths to each distinct element.
+> **Note on Pseudopotentials**: If your pseudopotentials exist in a single directory perfectly formulated as `<Element>.upf`, you can simply pass the path string (`psp_path="/path/to/library/"`). For advanced or multi-element designs, you can pass an explicit dictionary as demonstrated below.
 
 ```python
 from ase import Atoms
@@ -135,41 +106,36 @@ from ase.units import Bohr, Hartree
 import numpy as np
 from dftfe import DFTFE
 
-# 1. Define Geometry
+# 1. Define Standard Parameterizations
 box_dims_bohr = np.array([40.0, 40.0, 40.0])
 cell_ang = np.diag(box_dims_bohr) * Bohr
 
+bond_bohr = 2.19  # ≈ 1.16 Å C–O bond length
 center = box_dims_bohr / 2.0
-bond_bohr = 2.19
 rel_pos_bohr = np.array([
     [0.0, 0.0, 0.0],          # C
     [-bond_bohr, 0.0, 0.0],   # O
     [ bond_bohr, 0.0, 0.0]    # O
 ])
-pos_ang = (center + rel_pos_bohr) * Bohr
 
 atoms = Atoms(
     symbols=['C', 'O', 'O'],
-    positions=pos_ang,
+    positions=(center + rel_pos_bohr) * Bohr,
     cell=cell_ang,
     pbc=[False, False, False]
 )
 
-# 2. Define exactly where the UPF files are located for each element
-multi_element_psp_dict = {
-    "C": "/absolute/path/to/C.upf",
-    "O": "/absolute/path/to/O.upf"
-}
-
-# 3. Setup Calculator
-dftfe_bin = "/absolute/path/to/dftfe"
-run_cmd = f"mpirun -np 8 {dftfe_bin}"
-
+# 2. Setup the socket interface
 calc = DFTFE(
-    command=run_cmd,
-    psp_path=multi_element_psp_dict,
+    command="mpirun -np 8 /absolute/path/to/dftfe",
     
-    # Mesh and Convergence parameters
+    # Pseudopotential Dictionary Explicit Mapping
+    psp_path={
+        "C": "/absolute/path/to/C.upf",
+        "O": "/absolute/path/to/O.upf"
+    },
+    
+    # Solver Options
     mesh_size=1.0,          
     polynomial_order=6,     
     atom_ball_radius=3.0,   
@@ -177,79 +143,41 @@ calc = DFTFE(
     num_kohn_sham=20,       
     xc='GGA-PBE',
 
-    # ASE debugging controls
-    keep_scratch=True, # Leaves the DFT-FE scratch folder undeleted for inspection
-    debug_timing=True, # Prints out the timing overhead between ASE and DFT-FE
-
-    use_device=True, # Set to False if compiled only for CPU
+    # ASE / Socket Options
+    use_device=True,   # False if compiling on CPU-only machines!
+    keep_scratch=True, # Prevent deletion of parameter grids for post-run debugging
+    debug_timing=True, # Display python-to-C++ TCP transmission overhead
     verbosity=2,
-    log_file="co2_gs_socket.log",
 )
 
 atoms.calc = calc
 energy = atoms.get_potential_energy()
-print(f"Energy (Ha): {energy / Hartree}")
+print(f"Computed Energy (Ha): {energy / Hartree}")
 ```
-
-> **Note on `psp_path`**:
-> If your pseudopotentials share a single folder and are named perfectly as `<ElementSymbol>.upf` (e.g. `C.upf`, `O.upf`), you can simply provide the absolute directory string instead of a dictionary: `psp_path="/path/to/psp_directory"`.
 
 ---
 
-### 2. The SLURM Batch Script (`run_gs_co2.slurm`)
+## Machine Learning Dataset Generation
 
-Because the Python script itself launches `mpirun`, you do **not** run the python script with `mpirun`. Instead, you just invoke python natively and let it spawn the DFT-FE MPI processes in the background.
-
-```bash
-#!/bin/bash
-#SBATCH --job-name=ase_dftfe_co2
-#SBATCH --nodes=1
-#SBATCH --ntasks=8
-#SBATCH --cpus-per-task=1
-#SBATCH --gres=gpu:8
-#SBATCH --time=03:00:00
-
-# Make sure all libraries and MPI modules are loaded
-module load spack
-module load openmpi/5.0.6-gcc-13.3.0-ytficip 
-module load nccl/2.23.4-1-gcc-13.3.0-xyspmp2 
-module load gdrcopy/2.4.1-gcc-13.3.0-dvwa323
-export LIBRARY_PATH="/path/to/linAlgLibs/install/lib:$LIBRARY_PATH"
-
-export OMP_NUM_THREADS=1
-export DEAL_II_NUM_THREADS=1
-export DFTFE_NUM_THREADS=1
-
-# Activate Python environment containing ASE and DFTFE 
-source ~/.venvs/ase-env/bin/activate
-
-# Execute natively
-python co2_gs.py
-```
-
-# Machine Learning Dataset Generation
-
-The ASE-DFT-FE interface comes with a built-in suite of tools for extracting DFT-FE calculations and converting them into Machine Learning (ML) ready datasets (specifically Extended XYZ `.extxyz` format). These tools explicitly handle all internal unit conversions from Hartree/Bohr to AES standard units (eV/Å).
+The interface features a robust Machine-learning (ML) suite designed to extract, convert, and store calculations. The tools natively identify failed SCF convergence drops and flawlessly format valid runs into standard Extended XYZ (`.extxyz`) datasets ready for MACE or NequIP ingestion.
 
 ### 1. Online Active Learning
-If you are running an MD loop, geometry optimization, or any iterative pipeline through ASE, you can use the `DatasetRecorder` to automatically log every computed frame seamlessly:
+To record live simulation steps as they happen, initialize the `DatasetRecorder` and pipe your `Atoms` object to it.
 
 ```python
 from dftfe.utils import DatasetRecorder
 
-# Instantiate the recorder (uses append mode)
 recorder = DatasetRecorder("training_data.extxyz", max_force_threshold_ev_ang=100.0)
 
-# Inside your loop:
 atoms.calc = calc
 atoms.get_potential_energy()
 
-# Safely extract Energy, Forces, Stress and append to the dataset
+# Safely extract Energy, Forces, Stress (in eV/Å) and log them
 recorder.record(atoms, step=1, metadata={"temperature": 300, "source": "dftfe-md"})
 ```
 
-### 2. Offline Dataset Building
-If you already have a directory filled with old DFT-FE output logs (e.g., `*.op` files), you can batch-parse them and compile them into a single ML dataset using `build_dataset`. The parser is extremely robust and will gracefully skip crashed or incomplete calculations.
+### 2. Offline Log Harvesting 
+To recover vast directories of old `dftfe.log` or `*.op` execution logs generated outside of ASE, leverage the batch utility. It regex-parses legacy logs and reconstructs valid, scaled ASE frames efficiently.
 
 ```python
 from dftfe.utils import build_dataset
@@ -263,59 +191,33 @@ build_dataset(
 
 ---
 
-# Debugging and Tips
+## Debugging and Tips
 
-When running iterative loops (like MD or NEB), if a calculation fails or crashes silently, the `DFTFE` calculator provides two built-in tools to help you identify the problem:
+If iterative solvers crash silently or fail to inherit a specified configuration, leverage the following toggles within your `DFTFE(...)` constructor arguments:
 
-1. **`keep_scratch=True`**
-   By default, the ASE persistent socket creates a temporary `dftfeScratch_<port>` directory and cleans it up when the script exits. Passing `keep_scratch=True` leaves this directory intact so you can manually inspect `parameterFile.prm`, `pseudo.inp`, and `coordinates.inp` to verify that ASE correctly passed your parameters over the socket.
+1. **`keep_scratch=True`**  
+   The wrapper builds dynamic scratch spaces containing exact `parameterFile.prm` and `coordinates.inp` grids formatted for the parallel engine. Setting this parameter to true retains these artifacts post-execution, allowing you to explicitly verify that your ASE inputs transformed successfully.
 
-2. **`debug_timing=True`**
-   If you believe the socket connection is lagging or the Python wrapping is adding too much overhead, `debug_timing=True` will print an explicit breakdown at the end of each `calculate()` loop showing exactly how many seconds were spent strictly inside the C++ execution versus how many seconds were spent in Python packing/unpacking the JSON serialization.
-
----
-
-# Examples
-
-A comprehensive suite of example scripts covering single-element, multi-element, real-space, complex-space, CPU, and GPU workflows are available in the repository at:
-
-```
-interfaces/ase-dftfe/examples/
-```
+2. **`debug_timing=True`**  
+   If you suspect bottlenecking, this parameter measures and logs specifically how much wall-clock time was devoted purely to C++ computational processing versus Python TCP-Socket transmission overhead.
 
 ---
 
-# Supported Parameters
+## Resources and Contact
 
-The Python interface translates arguments directly into DFT-FE parameters. For a comprehensive mapping of all supported ASE Python variables to their corresponding native DFT-FE parameters (as they appear in `parameterFile.prm`), please review the full **[Parameter Mapping Guide](user_help/parameter_mapping.md)**.
+### Parameter Mappings
+The socket translates standard arguments into internal parameters dynamically. For an explicit map aligning Python flags to innate `parameterFile.prm` variables, review the **[Parameter Mapping Guide](user_help/parameter_mapping.md)**. (Note: Features like `compute_stress` cleanly auto-toggle if `pbc=False` to prevent backend solver panics.)
 
-A few notable parameters managed safely by default include `compute_forces=True` (ION FORCE) and `compute_stress=False` (CELL STRESS), which dynamically disable themselves if Period Boundary Conditions (PBCs) are absent to prevent solver crashes.
+### Citation
+If you utilize this workflow in architectural or academic workloads, ensure you reference the core frameworks:
+* [DFT-FE](https://sites.google.com/umich.edu/dftfe/) / [dftfe Github](https://github.com/dftfeDevelopers/dftfe)
+* [Atomic Simulation Environment (ASE)](https://wiki.fysik.dtu.dk/ase/)
 
----
+### License
+This interface operates within the DFT-FE ecosystem and is licensed under the **GNU Lesser General Public License (LGPL) v2.1 or later**.
 
-# License
+### Contact and Support
+For bugs, optimizations, or feature integration requests, please open an issue in the public repository. Alternatively, contact:
 
-The interface communicates with and resides within **DFT-FE**, which is licensed under the:
-
-```
-GNU Lesser General Public License (LGPL) v2.1 or later
-```
-
----
-
-# Citation
-
-If you use this interface in academic work, please cite the **ASE** and **DFT-FE** projects appropriately.
-
-```
-https://sites.google.com/umich.edu/dftfe/
-https://github.com/dftfeDevelopers/dftfe
-https://wiki.fysik.dtu.dk/ase/
-```
-
----
-
-# Contact
-
-For questions, bug reports, or feature requests, please open an issue in this repository or send a mail to Mehul Darak at 10pipioff@gmail.com
-
+**Mehul Darak**
+10pipioff@gmail.com
