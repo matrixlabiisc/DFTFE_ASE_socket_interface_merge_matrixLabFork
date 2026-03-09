@@ -11,6 +11,7 @@ By operating via a socket, the DFT-FE client remains persistent throughout the e
 - [Features and Submodules](#features--submodules)
 - [Prerequisites and Installation](#prerequisites--installation)
 - [Cluster Deployment (CPU and GPU)](#cluster-deployment-cpu--gpu)
+- [Interactive Use (Jupyter Notebooks)](#interactive-use-jupyter-notebooks)
 - [Getting Started](#getting-started)
 - [Machine Learning Dataset Generation](#machine-learning-dataset-generation)
 - [Debugging and Tips](#debugging-and-tips)
@@ -90,6 +91,76 @@ source ~/.venvs/ase-env/bin/activate
 
 # 3. Execute Natively (The script manages mpirun automatically)
 python sim_gs.py
+```
+
+---
+
+## Interactive Use (Jupyter Notebooks)
+
+To use the ASE-DFTFE interface interactively in a Jupyter Notebook on an HPC cluster, you must request a compute node allocation and launch the notebook server from that node. This ensures the persistent socket backend has access to the required CPU/GPU resources.
+
+### 1. Request an Interactive Allocation
+Request a compute node using `salloc` (for SLURM) or your cluster's equivalent command.
+
+```bash
+# Example: Request 1 node with GPUs for 3 hours
+salloc --nodes=1 --ntasks-per-node=16 --gres=gpu:8 --time=03:00:00
+```
+
+### 2. Configure the Environment
+Once the allocation is granted and you are on the compute node, load your modules and set your library paths.
+
+```bash
+# 1. Load your required MPI and GPU modules
+module load openmpi/5.0.6-gcc-13.3.0-ytficip 
+# ... load other modules (cuda/nccl/etc)
+
+# 2. Set library paths for linking (Replace with your paths)
+export LIBRARY_PATH="/path/to/linAlgLibs/install/lib:$LIBRARY_PATH"
+export LD_LIBRARY_PATH="/path/to/linAlgLibs/install/lib:$LD_LIBRARY_PATH"
+
+# 3. Activate Python environment
+source ~/.venvs/ase-env/bin/activate
+```
+
+### 3. Launch the Jupyter Server
+Launch the notebook server directly on the compute node.
+
+```bash
+jupyter notebook --no-browser --port=8888 --ip=0.0.0.0
+```
+
+### 4. Accessing the Notebook
+Create an SSH tunnel from your local machine to the compute node to access the notebook via your browser.
+
+```bash
+# On your local laptop:
+ssh -L 8888:<compute-node-name>:8888 <username>@<cluster-address>
+```
+Open `http://localhost:8888` in your browser.
+
+### 5. In-Notebook Initialization
+Inside your notebook cell, you can initialize the calculator as usual. The environment variables set in Step 2 will be inherited by the kernel if started correctly; otherwise, you can set them using `os.environ`.
+
+```python
+import os
+from dftfe import DFTFE
+from ase.build import bulk
+
+# Optional: Add library paths if not inherited
+os.environ["LIBRARY_PATH"] = "/path/to/lib:" + os.environ.get("LIBRARY_PATH", "")
+
+calc = DFTFE(
+    command="mpirun -np 8 /path/to/dftfe",
+    psp_path="/path/to/psp_library/",
+    use_device=True
+)
+
+atoms = bulk("Cu", "fcc", a=3.6)
+atoms.calc = calc
+
+# Computed energy will trigger the persistent backend
+print(f"Energy: {atoms.get_potential_energy()}")
 ```
 
 ---
