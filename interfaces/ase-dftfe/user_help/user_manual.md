@@ -96,7 +96,11 @@ python sim_gs.py
 
 ## Getting Started
 
-To execute a calculation, construct your standard ASE `Atoms` object and assign the instantiated `DFTFE` calculator to it. Below is an example demonstrating a fully iterative calculation using a Carbon Dioxide ($CO_2$) configuration. 
+To execute a calculation, construct your standard ASE `Atoms` object and assign the instantiated `DFTFE` calculator to it. 
+
+### 1. Single Point Energy ($CO_2$ Example)
+
+Below is an example demonstrating a fully iterative ground-state calculation using a Carbon Dioxide ($CO_2$) configuration.
 
 > **Note on Pseudopotentials**: If your pseudopotentials exist in a single directory perfectly formulated as `<Element>.upf`, you can simply pass the path string (`psp_path="/path/to/library/"`). For advanced or multi-element designs, you can pass an explicit dictionary as demonstrated below.
 
@@ -153,6 +157,84 @@ calc = DFTFE(
 atoms.calc = calc
 energy = atoms.get_potential_energy()
 print(f"Computed Energy (Ha): {energy / Hartree}")
+```
+
+### 2. Geometry Optimization / Relaxation (Graphene Example)
+
+Because the DFT-FE calculator seamlessly hooks into the ASE ecosystem, you can natively leverage ASE's built-in advanced optimizer loops like `FIRE` or `BFGS`. Note that the python script itself controls the tight ionic optimization loop while the socket interface securely hot-reloads the persistent DFT-FE runtime for each frame evaluation.
+
+Below is an example (`relax_graphene.py`) of setting up a periodic Graphene cell and running an ionic relaxation using the ASE `FIRE` optimizer.
+
+```python
+from ase import Atoms
+from ase.units import Bohr, Hartree
+import numpy as np
+from dftfe import DFTFE
+from ase.optimize import FIRE
+
+# 1. Define Graphene Cell (Periodic)
+cell_bohr = np.array([
+    [ 4.65428900,  0.00000000, 0.0],
+    [-2.32714450,  4.03073251, 0.0],
+    [ 0.0,         0.0,       50.0]
+])
+
+frac_positions = np.array([
+    [0.0000000000, 0.0000000000, 0.5],
+    [0.3333333333, 0.6666666667, 0.5]
+])
+
+atoms = Atoms(
+    symbols=['C', 'C'],
+    positions=frac_positions @ (cell_bohr * Bohr),
+    cell=cell_bohr * Bohr,
+    pbc=[True, True, False] # 2D periodic
+)
+
+# 2. Setup the Socket Interface
+calc = DFTFE(
+    command="mpirun -np 16 /absolute/path/to/dftfe",
+    psp_path="/absolute/path/to/psp_directory",
+    
+    # Example Periodic parameters
+    use_time_reversal_symmetry=True,
+    mp_grid=(4,4,1),
+    npkpt=8,
+    
+    # Standard Options
+    mesh_size=0.5,
+    polynomial_order=3,
+    use_device=True
+)
+
+atoms.calc = calc
+
+# 3. Fire the ASE Optimizer Loop
+opt = FIRE(atoms, trajectory="relax_graphene.traj", logfile="relax_graphene_optimizer.log")
+
+# Converge when max force drops below 0.01 eV/Angstrom
+opt.run(fmax=0.01)
+
+print(f"Final relaxed energy (Ha): {atoms.get_potential_energy() / Hartree}")
+```
+
+To run this workload on a cluster via SLURM (`run_relax_graphene.slurm`), configure a multi-node job and execute the python natively to trigger the underlying continuous C++ simulation cycle.
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=ase_relax_graphene
+#SBATCH --nodes=2
+#SBATCH --ntasks=16
+#SBATCH --cpus-per-task=1
+#SBATCH --time=03:00:00
+
+module load openmpi/5.0.6-gcc-13.3.0-ytficip 
+export LIBRARY_PATH="/path/to/linAlgLibs/install/lib:$LIBRARY_PATH"
+
+source ~/.venvs/ase-env/bin/activate
+
+# Launch single python orchestrator, mpirun is handled intrinsically
+python relax_graphene.py
 ```
 
 ---
