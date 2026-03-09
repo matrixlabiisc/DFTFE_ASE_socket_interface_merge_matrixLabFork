@@ -175,6 +175,40 @@ source ~/.venvs/ase-env/bin/activate
 python co2_gs.py
 ```
 
+# Machine Learning Dataset Generation
+
+The ASE-DFT-FE interface comes with a built-in suite of tools for extracting DFT-FE calculations and converting them into Machine Learning (ML) ready datasets (specifically Extended XYZ `.extxyz` format). These tools explicitly handle all internal unit conversions from Hartree/Bohr to AES standard units (eV/Å).
+
+### 1. Online Active Learning
+If you are running an MD loop, geometry optimization, or any iterative pipeline through ASE, you can use the `DatasetRecorder` to automatically log every computed frame seamlessly:
+
+```python
+from dftfe.utils import DatasetRecorder
+
+# Instantiate the recorder (uses append mode)
+recorder = DatasetRecorder("training_data.extxyz", max_force_threshold_ev_ang=100.0)
+
+# Inside your loop:
+atoms.calc = calc
+atoms.get_potential_energy()
+
+# Safely extract Energy, Forces, Stress and append to the dataset
+recorder.record(atoms, step=1, metadata={"temperature": 300, "source": "dftfe-md"})
+```
+
+### 2. Offline Dataset Building
+If you already have a directory filled with old DFT-FE output logs (e.g., `*.op` files), you can batch-parse them and compile them into a single ML dataset using `build_dataset`. The parser is extremely robust and will gracefully skip crashed or incomplete calculations.
+
+```python
+from dftfe.utils import build_dataset
+
+build_dataset(
+    input_dir="/path/to/old/dftfe/runs/",
+    output_file="compiled_offline_dataset.extxyz",
+    log_extension="*.op"
+)
+```
+
 ---
 
 # Debugging and Tips
