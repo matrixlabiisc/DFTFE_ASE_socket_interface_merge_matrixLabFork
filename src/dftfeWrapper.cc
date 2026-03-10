@@ -36,6 +36,7 @@
 #include <iostream>
 #include <list>
 #include <sstream>
+#include <iomanip>
 #include <sys/stat.h>
 #include <chrono>
 #include <unistd.h> // For sleep
@@ -342,7 +343,7 @@ namespace dftfe
     const double                           tolerance,
     const std::string                      xc,
     const double                           atomBallRadius,
-    const dftfe::uInt                      numEigenStates,
+    const dftfe::uInt                      numBands,
     const std::string                      orthogonalizationType,
     // New parameters
     const dftfe::uInt wfcBlockSize,
@@ -743,8 +744,10 @@ namespace dftfe
             }
 
             if (tolerance != -1.0) {
+              std::ostringstream oss;
+              oss << std::scientific << std::setprecision(13) << tolerance;
               cmd = "sed -i 's/set TOLERANCE.*/set TOLERANCE=" +
-                    std::to_string(tolerance) + "/g' " + parameter_file_path;
+                    oss.str() + "/g' " + parameter_file_path;
               system(cmd.c_str());
             }
 
@@ -890,11 +893,11 @@ namespace dftfe
               system(cmd.c_str());
             }
 
-            if (numEigenStates != 999999)
+            if (numBands != 999999)
               {
                 cmd =
                   "sed -i 's/set NUMBER OF KOHN-SHAM WAVEFUNCTIONS.*/set NUMBER OF KOHN-SHAM WAVEFUNCTIONS=" +
-                  std::to_string(numEigenStates) + "/g' " + parameter_file_path;
+                  std::to_string(numBands) + "/g' " + parameter_file_path;
                 system(cmd.c_str());
               }
 
