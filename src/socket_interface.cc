@@ -331,7 +331,7 @@ namespace dftfe
                               double      &tolerance,
                               std::string &xc,
                               double      &atom_ball_radius,
-                              dftfe::uInt &num_eigen_states,
+                              dftfe::uInt &num_bands,
                               std::string &orthogonalization_type,
                               // New parameters
                               dftfe::uInt &wfc_block_size,
@@ -381,7 +381,7 @@ namespace dftfe
     tolerance        = parse_scalar<double>(json, "tolerance", -1.0);
     xc               = parse_string(json, "xc", "Unprovided");
     atom_ball_radius = parse_scalar<double>(json, "atom_ball_radius", -1.0);
-    num_eigen_states    = parse_scalar<dftfe::uInt>(json, "num_eigen_states", 999999);
+    num_bands    = parse_scalar<dftfe::uInt>(json, "num_bands", 999999);
     orthogonalization_type =
       parse_string(json, "orthogonalization_type", "Unprovided");
 
@@ -531,7 +531,7 @@ namespace dftfe
         double                           tolerance;
         std::string                      xc;
         double                           atom_ball_radius;
-        dftfe::uInt                      num_eigen_states;
+        dftfe::uInt                      num_bands;
         std::string                      orthogonalization_type;
         dftfe::Int                       verbosity;
         bool                             use_device;
@@ -570,7 +570,7 @@ namespace dftfe
                       tolerance,
                       xc,
                       atom_ball_radius,
-                      num_eigen_states,
+                      num_bands,
                       orthogonalization_type,
                       wfc_block_size,
                       cheby_wfc_block_size,
@@ -728,7 +728,7 @@ namespace dftfe
                        tolerance,
                        xc,
                        atom_ball_radius,
-                       num_eigen_states,
+                       num_bands,
                        orthogonalization_type,
                        wfc_block_size,
                        cheby_wfc_block_size,

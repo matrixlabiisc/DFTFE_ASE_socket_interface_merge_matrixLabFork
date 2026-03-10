@@ -58,7 +58,7 @@ calc = DFTFE(
     tolerance=5e-5,         
     scf_mixing=0.5,         
     fermi_temp=500.0,       
-    num_eigen_states=20,       
+    num_bands=20,       
 
     # Functional
     xc='GGA-PBE',

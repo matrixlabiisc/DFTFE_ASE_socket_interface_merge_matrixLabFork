@@ -43,7 +43,7 @@ calc = DFTFE(
     tolerance=1e-6,
     scf_mixing=0.3,
     fermi_temp=300.0,
-    num_eigen_states=20,
+    num_bands=20,
 
     debug_timing=True,
 

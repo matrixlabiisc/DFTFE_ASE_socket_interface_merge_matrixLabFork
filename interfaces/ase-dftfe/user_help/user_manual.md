@@ -215,7 +215,7 @@ calc = DFTFE(
     polynomial_order=6,     
     atom_ball_radius=3.0,   
     tolerance=5e-5,         
-    num_eigen_states=20,       
+    num_bands=20,       
     xc='GGA-PBE',
 
     # ASE / Socket Options
@@ -332,7 +332,7 @@ calc = DFTFE(
     mesh_size=1.0,
     polynomial_order=6,
     tolerance=1e-6,
-    num_eigen_states=20,
+    num_bands=20,
     compute_forces=True, # Crucial for phonons
     use_device=True
 )

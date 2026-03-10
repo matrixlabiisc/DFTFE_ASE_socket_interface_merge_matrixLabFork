@@ -54,7 +54,7 @@ calc = DFTFE(
     tolerance=1e-6, # SCF TOLERANCE
     scf_mixing=0.5, # SCF MIXING PARAMETER
     fermi_temp=500.0, # SCF TEMPERATURE
-    num_eigen_states=16, # NUMBER OF KOHN-SHAM STATES
+    num_bands=16, # NUMBER OF KOHN-SHAM STATES
     debug_timing=True, # enables timing ASE and DFT-FE to check overhead
 
     # Functional

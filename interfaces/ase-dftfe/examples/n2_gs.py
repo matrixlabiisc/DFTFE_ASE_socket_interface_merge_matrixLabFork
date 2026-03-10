@@ -58,7 +58,7 @@ calc = DFTFE(
     tolerance=5e-5,         # SCF TOLERANCE
     scf_mixing=0.5,         # MIXING PARAMETER
     fermi_temp=500.0,       # TEMPERATURE
-    num_eigen_states=15,       # NUMBER OF KS STATES
+    num_bands=15,       # NUMBER OF KS STATES
     debug_timing=True, # enables timing ASE and DFT-FE to check overhead
 
     # =========================
