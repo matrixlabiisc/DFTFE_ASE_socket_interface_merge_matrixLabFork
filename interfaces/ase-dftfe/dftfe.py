@@ -28,6 +28,7 @@ Client Server Architecture:
 """
 
 import socket
+import os
 import json
 import subprocess
 import time
@@ -36,7 +37,7 @@ import numpy as np
 from ase.calculators.calculator import Calculator, all_changes
 from ase.units import Bohr, Hartree
 
-class DFTFESocketCalculator(Calculator):
+class dftfeSocketCalculator(Calculator):
     implemented_properties = ['energy', 'forces', 'stress']
 
     def __init__(self, command='dftfe', 
@@ -71,7 +72,7 @@ class DFTFESocketCalculator(Calculator):
                  pseudopotential_filename=None,
                  verbosity=None,
                  use_device=False,
-                 host='127.00.1', port=0, timeout=300, 
+                 host=None, port=0, timeout=300, 
                  keep_scratch=False, # New optional parameter
                  debug_timing=False, # New optional parameter for timing overhead
                  log_file='dftfe_output.log', **kwargs):
@@ -80,7 +81,7 @@ class DFTFESocketCalculator(Calculator):
         """
         Calculator.__init__(self, **kwargs)
         self.launch_cmd = command
-        self.host = host
+        self.host = host if host is not None else socket.gethostname()
         self.port = port
         self.timeout = timeout
         self.log_file_path = log_file
@@ -344,4 +345,4 @@ class DFTFESocketCalculator(Calculator):
         self.close()
 
 # Alias for cleaner import
-DFTFE = DFTFESocketCalculator
+DFTFE = dftfeSocketCalculator

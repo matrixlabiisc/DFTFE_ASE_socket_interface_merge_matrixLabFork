@@ -35,18 +35,16 @@ atoms = Atoms(
 # DFT-FE Setup
 # =========================
 
-psp_path = "/DFTFE/interfaces/ase-dftfe/psp_library/C.upf"
-dftfe_bin = "/DFTFE/build/release/complex/dftfe"
+psp_path = "/home/pa01/Mehul/DFTFE/interfaces/ase-dftfe/psp_library"
+dftfe_bin = "/home/pa01/Mehul/DFTFE/build_gpu/release/complex/dftfe"
 
 run_cmd = (
     f"export DFTFE_PSP_PATH={psp_path} && "
-    f"mpirun -np 8 {dftfe_bin}"
+    f"mpirun -np 16 {dftfe_bin}"
 )
 
 calc = DFTFE(
     command=run_cmd,
-    host="localhost",
-    port=0,
 
     # =========================
     # Mesh

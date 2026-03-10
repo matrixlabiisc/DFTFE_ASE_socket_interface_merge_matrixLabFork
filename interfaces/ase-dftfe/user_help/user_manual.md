@@ -368,6 +368,7 @@ To run this on a GPU cluster using SLURM (`run_phonon_cu.slurm`):
 #!/bin/bash
 #SBATCH --nodes=2
 #SBATCH --ntasks=16
+#SBATCH --ntasks-per-node=8
 #SBATCH --gres=gpu:8
 #SBATCH --time=03:00:00
 
@@ -377,6 +378,8 @@ export LIBRARY_PATH="/path/to/linAlgLibs/install/lib:$LIBRARY_PATH"
 source ~/.venvs/ase-env/bin/activate
 python phonon_cu.py
 ```
+
+> **Multi-Node Scaling Tip**: When distributing DFT-FE across multiple nodes using SLURM (e.g. `--nodes=2`), it is strictly required to explicitly specify `#SBATCH --ntasks-per-node=8`. This guarantees that the MPI execution daemon distributes ranks optimally across the hardware, allowing the DFT-FE internal GPU mapping to bind processes perfectly to individual physical GPUs on each node.
 
 ---
 

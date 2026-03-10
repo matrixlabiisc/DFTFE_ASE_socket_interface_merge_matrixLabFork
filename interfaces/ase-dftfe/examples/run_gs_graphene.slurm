@@ -1,11 +1,12 @@
 #!/bin/bash
 #SBATCH --job-name=ase_gs_multi_graphene
-#SBATCH --nodes=1
-#SBATCH --ntasks=8
+#SBATCH --nodes=2
+#SBATCH --ntasks=16
+#SBATCH --ntasks-per-node=8
 #SBATCH --cpus-per-task=1
 #SBATCH --gres=gpu:8
 #SBATCH --time=03:00:00
-#SBATCH --nodelist=cn2
+#SBATCH --nodelist=cn[1-2]
 #SBATCH --output=slurm_%j.out
 
 echo "Nodes      : $SLURM_JOB_NUM_NODES"
