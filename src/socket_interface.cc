@@ -32,7 +32,7 @@
 namespace dftfe
 {
 
-  SocketDriver::SocketDriver(const std::string &host, int port, MPI_Comm comm)
+  socketDriver::socketDriver(const std::string &host, int port, MPI_Comm comm)
     : host(host)
     , port(port)
     , comm(comm)
@@ -41,13 +41,13 @@ namespace dftfe
     MPI_Comm_rank(comm, &rank);
   }
 
-  SocketDriver::~SocketDriver()
+  socketDriver::~socketDriver()
   {
     close_socket();
   }
 
   void
-  SocketDriver::connect_socket()
+  socketDriver::connect_socket()
   {
     if (rank == 0)
       {
@@ -96,7 +96,7 @@ namespace dftfe
   }
 
   void
-  SocketDriver::close_socket()
+  socketDriver::close_socket()
   {
     if (rank == 0 && sockfd >= 0)
       {
@@ -106,7 +106,7 @@ namespace dftfe
   }
 
   void
-  SocketDriver::send_data(const std::string &data)
+  socketDriver::send_data(const std::string &data)
   {
     if (rank == 0)
       {
@@ -118,7 +118,7 @@ namespace dftfe
   }
 
   std::string
-  SocketDriver::receive_data()
+  socketDriver::receive_data()
   {
     std::string data;
     if (rank == 0)
@@ -313,7 +313,7 @@ namespace dftfe
   }
 
   void
-  SocketDriver::parse_request(const std::string                &json,
+  socketDriver::parse_request(const std::string                &json,
                               std::vector<std::vector<double>> &coords,
                               std::vector<std::vector<double>> &cell,
                               std::vector<dftfe::uInt>         &numbers,
@@ -416,7 +416,7 @@ namespace dftfe
   }
 
   std::string
-  SocketDriver::format_response(double                                  energy,
+  socketDriver::format_response(double                                  energy,
                                 const std::vector<std::vector<double>> &forces,
                                 const std::vector<std::vector<double>> &stress)
   {
@@ -489,17 +489,17 @@ namespace dftfe
   }
 
   void
-  SocketDriver::run()
+  socketDriver::run()
   {
     // We do NOT initialize dftfeWrapper with paramFile here anymore.
     // We wait for the first socket message to get the configuration.
 
     if (rank == 0)
-      std::cout << "SocketDriver: Starting server..." << std::endl;
+      std::cout << "socketDriver: Starting server..." << std::endl;
 
     connect_socket();
     if (rank == 0)
-      std::cout << "SocketDriver: Connected to socket." << std::endl;
+      std::cout << "socketDriver: Connected to socket." << std::endl;
 
     // dftfeWrapper instance (default constructed, empty)
     dftfeWrapper dft;
@@ -509,10 +509,10 @@ namespace dftfe
     while (true)
       {
         if (rank == 0)
-          std::cout << "SocketDriver: Waiting for data..." << std::endl;
+          std::cout << "socketDriver: Waiting for data..." << std::endl;
         std::string json = receive_data();
         if (rank == 0)
-          std::cout << "SocketDriver: Received data." << std::endl;
+          std::cout << "socketDriver: Received data." << std::endl;
 
         std::vector<std::vector<double>> new_coords;
         std::vector<std::vector<double>> new_cell;
@@ -592,7 +592,7 @@ namespace dftfe
         if (cmd == "exit")
           {
             if (rank == 0)
-              std::cout << "SocketDriver: Received exit command." << std::endl;
+              std::cout << "socketDriver: Received exit command." << std::endl;
             break;
           }
 
@@ -706,7 +706,7 @@ namespace dftfe
 
             if (rank == 0)
               std::cout
-                << "SocketDriver: Initializing dftfeWrapper with explicit data..."
+                << "socketDriver: Initializing dftfeWrapper with explicit data..."
                 << std::endl;
 
             dft.reinit(comm,
@@ -748,7 +748,7 @@ namespace dftfe
 
             initialized = true;
             if (rank == 0)
-              std::cout << "SocketDriver: dftfeWrapper initialized."
+              std::cout << "socketDriver: dftfeWrapper initialized."
                         << std::endl;
 
             // For the first run, we just compute.
@@ -783,7 +783,7 @@ namespace dftfe
               {
                 if (rank == 0)
                   std::cout
-                    << "SocketDriver: Updating atom positions... Max disp: "
+                    << "socketDriver: Updating atom positions... Max disp: "
                     << max_disp << std::endl;
                 dft.updateAtomPositions(displacements);
               }
@@ -791,7 +791,7 @@ namespace dftfe
               {
                 if (rank == 0)
                   std::cout
-                    << "SocketDriver: Displacements small, skipping update."
+                    << "socketDriver: Displacements small, skipping update."
                     << std::endl;
               }
 
@@ -803,13 +803,13 @@ namespace dftfe
 
         // Compute
         if (rank == 0)
-          std::cout << "SocketDriver: Computing free energy... (Forces: "
+          std::cout << "socketDriver: Computing free energy... (Forces: "
                     << (compute_forces ? "ON" : "OFF")
                     << ", Stress: " << (compute_stress ? "ON" : "OFF") << ")"
                     << std::endl;
         auto result = dft.computeDFTFreeEnergy(compute_forces, compute_stress);
         if (rank == 0)
-          std::cout << "SocketDriver: Computation complete." << std::endl;
+          std::cout << "socketDriver: Computation complete." << std::endl;
 
         double energy = std::get<0>(result);
         auto   forces = dft.getForcesAtoms();
@@ -818,7 +818,7 @@ namespace dftfe
         std::string response = format_response(energy, forces, stress);
         send_data(response);
         if (rank == 0)
-          std::cout << "SocketDriver: Response sent." << std::endl;
+          std::cout << "socketDriver: Response sent." << std::endl;
       }
 
     close_socket();

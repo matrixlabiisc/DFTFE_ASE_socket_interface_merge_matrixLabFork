@@ -119,8 +119,8 @@ main(int argc, char *argv[])
       if (world_rank == 0)
         std::cout << "Starting DFT-FE in Socket Mode connecting to "
                   << socket_host << ":" << socket_port << std::endl;
-      // SocketDriver no longer needs parameter_file
-      dftfe::SocketDriver driver(socket_host, socket_port, MPI_COMM_WORLD);
+      // socketDriver no longer needs parameter_file
+      dftfe::socketDriver driver(socket_host, socket_port, MPI_COMM_WORLD);
       driver.run();
 
       dftfe::dftfeWrapper::globalHandlesFinalize();

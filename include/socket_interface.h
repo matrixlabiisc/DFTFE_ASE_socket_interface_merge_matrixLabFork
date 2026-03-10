@@ -10,11 +10,11 @@
 namespace dftfe
 {
 
-  class SocketDriver
+  class socketDriver
   {
   public:
-    SocketDriver(const std::string &host, int port, MPI_Comm comm);
-    ~SocketDriver();
+    socketDriver(const std::string &host, int port, MPI_Comm comm);
+    ~socketDriver();
     void
     run();
 
