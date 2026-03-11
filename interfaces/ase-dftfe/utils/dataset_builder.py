@@ -3,7 +3,7 @@ import glob
 from .parser import parse_dftfe_log
 from .writer import append_to_extxyz
 
-def build_dataset(input_dir: str, output_file: str, log_extension: str = "*.op", symbols: list = None):
+def build_dataset(input_dir: str, output_file: str, log_extension: str = "*.op", symbols: list = None, extract_properties: list = None, append: bool = False):
     """
     Crawls a directory for DFT-FE output logs, parses them all, and merges them into a single 
     Extended XYZ dataset.
@@ -11,14 +11,35 @@ def build_dataset(input_dir: str, output_file: str, log_extension: str = "*.op",
     Args:
         input_dir: Root directory to search for logs.
         output_file: Destination .extxyz file.
-        log_extension: Pattern of logs to search (default: *.op).
+        log_extension: Pattern or list of patterns/extensions to search (default: "*.op").
+                       Can be a comma-separated string like "*.op, *.out, *.log" or ".op, .out, .log".
         symbols: Hardcoded symbol list if parsing raw logs without ASE metadata.
+        extract_properties: Optional list of properties to extract (e.g. ['energy', 'force']). 
+                            If not specified, whatever properties are available in the log are extracted.
+        append: If True, appends to the output_file if it already exists. If False, overwrites it. (default: False)
     """
-    search_path = os.path.join(input_dir, "**", log_extension)
-    log_files = glob.glob(search_path, recursive=True)
+    # Handle append mode: if not appending, remove existing file
+    if not append and os.path.exists(output_file):
+        os.remove(output_file)
+
+    if isinstance(log_extension, str):
+        extensions = [ext.strip() for ext in log_extension.split(',')]
+    else:
+        extensions = log_extension
+
+    log_files = []
+    for ext in extensions:
+        if not ext.startswith('*'):
+            ext = f"*{ext}" if ext.startswith('.') else f"*.{ext}"
+            
+        search_path = os.path.join(input_dir, "**", ext)
+        log_files.extend(glob.glob(search_path, recursive=True))
+        
+    # Remove duplicates
+    log_files = list(set(log_files))
     
     if not log_files:
-        print(f"No log files found matching {search_path}")
+        print(f"No log files found matching extensions in {input_dir}")
         return
         
     count = 0
@@ -26,13 +47,30 @@ def build_dataset(input_dir: str, output_file: str, log_extension: str = "*.op",
         try:
             frame = parse_dftfe_log(file, symbols=symbols)
             
-            # Simple health check
-            if 'energy' in frame.info and 'force' in frame.arrays:
+            # If the user requested specific properties, filter out everything else
+            if extract_properties is not None:
+                for key in list(frame.info.keys()):
+                    if key not in extract_properties and key not in ['source_file', 'filename']:
+                        del frame.info[key]
+                for key in list(frame.arrays.keys()):
+                    if key not in extract_properties and key not in ['positions', 'numbers']:
+                        del frame.arrays[key]
+
+            # Check what properties we actually have after potentially filtering
+            final_info = [k for k in frame.info.keys() if k not in ['source_file', 'filename']]
+            final_arrays = [k for k in frame.arrays.keys() if k not in ['positions', 'numbers']]
+            
+            # Simple health check: keep the frame if we extracted at least something
+            if len(final_info) > 0 or len(final_arrays) > 0:
                 frame.info['source_file'] = file
+                frame.info['filename'] = os.path.splitext(os.path.basename(file))[0]
                 append_to_extxyz(frame, output_file)
                 count += 1
             else:
-                print(f"Skipping {file}: Missing energy or forces.")
+                if extract_properties is not None:
+                    print(f"Skipping {file}: None of the requested properties ({extract_properties}) were found.")
+                else:
+                    print(f"Skipping {file}: No parseable properties (like energy, forces) found.")
         except Exception as e:
             print(f"Failed to parse {file}: {e}")
             

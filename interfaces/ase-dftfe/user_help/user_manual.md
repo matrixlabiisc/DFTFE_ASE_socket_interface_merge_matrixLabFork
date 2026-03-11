@@ -403,7 +403,7 @@ recorder.record(atoms, step=1, metadata={"temperature": 300, "source": "dftfe-md
 ```
 
 ### 2. Offline Log Harvesting 
-To recover vast directories of old `dftfe.log` or `*.op` execution logs generated outside of ASE, leverage the batch utility. It regex-parses legacy logs and reconstructs valid, scaled ASE frames efficiently.
+To recover vast directories of old execution logs generated outside of ASE, leverage the batch utility. It regex-parses legacy logs and reconstructs valid, scaled ASE frames efficiently. It natively supports searching for multiple log extensions and extracting specific properties.
 
 ```python
 from dftfe.utils import build_dataset
@@ -411,7 +411,9 @@ from dftfe.utils import build_dataset
 build_dataset(
     input_dir="/path/to/old/dftfe/runs/",
     output_file="compiled_offline_dataset.extxyz",
-    log_extension="*.op"
+    log_extension="*.op, *.out, *.log",      # Supports comma-separated extensions or lists
+    extract_properties=['energy', 'force'],  # Optional: Exclusively extracts these properties. If omitted, extracts whatever is found.
+    append=False                             # Optional: If True, appends to the existing extxyz file. Default is False (overwrites).
 )
 ```
 
