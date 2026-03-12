@@ -30,4 +30,4 @@ dependencies = [
 dftfe = "dftfe:DFTFE"
 
 [tool.setuptools]
-py-modules = ["dftfe"]
+packages = ["dftfe", "dftfe.utils"]

@@ -42,7 +42,7 @@ multi_element_psp_dict = {
     "O": "/DFTFE/interfaces/ase-dftfe/psp_library/O.upf"
 }
 
-dftfe_bin = "/DFTFE/build_gpu/release/real/dftfe"
+dftfe_bin = "/DFTFE/build/release/real/dftfe"
 run_cmd = f"mpirun -np 8 {dftfe_bin}"
 
 calc = DFTFE(

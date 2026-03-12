@@ -36,7 +36,7 @@ This document details the mapping between the ASE Calculator parameters (`dftfe.
 | ------------- | -------- | ------------------------- | ----------- |
 | `max_scf_iterations` | `max_scf_iterations` | `set MAXIMUM ITERATIONS` | Maximum number of SCF iterations |
 | `mixing_history` | `mixing_history` | `set LBFGS HISTORY` | History size for mixing/Anderson acceleration |
-| `num_eigen_states` | `num_eigen_states` | `set NUMBER OF KOHN-SHAM WAVEFUNCTIONS` | Number of KS states to compute |
+| `num_bands` | `num_bands` | `set NUMBER OF KOHN-SHAM WAVEFUNCTIONS` | Number of KS states to compute |
 | `orthogonalization_type` | `orthogonalization_type` | `set ORTHOGONALIZATION TYPE` | Method: "Auto", "CGS", etc. |
 | `smeared_nuclear_charges` | `smeared_nuclear_charges`| `set SMEARED NUCLEAR CHARGES` | "true"/"false" |
 | (derived from properties) | `compute_stress` | `set CELL STRESS` | Compute cell stress (enabled if 'stress' in properties). NOTE: Controlled via runtime flag in socket interface, corresponding to `Optimization` subsection. |
