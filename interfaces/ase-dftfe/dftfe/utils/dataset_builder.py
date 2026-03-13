@@ -3,7 +3,7 @@ import glob
 from .parser import parse_dftfe_log
 from .writer import append_to_extxyz
 
-def build_dataset(input_dir: str, output_file: str, log_extension: str = "*.op", symbols: list = None, extract_properties: list = None, append: bool = False):
+def build_dataset(input_dir: str, output_file: str, log_extension: str = "*.op", symbols: list = None, extract_properties: list = None, append: bool = False, model: str = None):
     """
     Crawls a directory for DFT-FE output logs, parses them all, and merges them into a single 
     Extended XYZ dataset.
@@ -17,6 +17,7 @@ def build_dataset(input_dir: str, output_file: str, log_extension: str = "*.op",
         extract_properties: Optional list of properties to extract (e.g. ['energy', 'force']). 
                             If not specified, whatever properties are available in the log are extracted.
         append: If True, appends to the output_file if it already exists. If False, overwrites it. (default: False)
+        model: Optional string naming a target ML architecture. E.g. passing 'MACE' renames energy/forces to REF_energy/REF_forces.
     """
     # Handle append mode: if not appending, remove existing file
     if not append and os.path.exists(output_file):
@@ -55,6 +56,15 @@ def build_dataset(input_dir: str, output_file: str, log_extension: str = "*.op",
                 for key in list(frame.arrays.keys()):
                     if key not in extract_properties and key not in ['positions', 'numbers']:
                         del frame.arrays[key]
+
+            # Model Specific transformations
+            if model is not None and model.upper() == "MACE":
+                if 'energy' in frame.info:
+                    frame.info['REF_energy'] = frame.info.pop('energy')
+                if 'force' in frame.arrays:
+                    frame.arrays['REF_forces'] = frame.arrays.pop('force')
+                elif 'forces' in frame.arrays:
+                    frame.arrays['REF_forces'] = frame.arrays.pop('forces')
 
             # Check what properties we actually have after potentially filtering
             final_info = [k for k in frame.info.keys() if k not in ['source_file', 'filename']]
