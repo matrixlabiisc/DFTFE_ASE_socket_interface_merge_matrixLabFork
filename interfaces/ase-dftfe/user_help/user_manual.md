@@ -14,6 +14,7 @@ By operating via a socket, the DFT-FE client remains persistent throughout the e
 - [Interactive Use (Jupyter Notebooks)](#interactive-use-jupyter-notebooks)
 - [Getting Started](#getting-started)
 - [Machine Learning Dataset Generation](#machine-learning-dataset-generation)
+- [Format Conversion and CIF Utilities](#format-conversion-and-cif-utilities)
 - [Debugging and Tips](#debugging-and-tips)
 - [Resources and Contact](#resources--contact)
 
@@ -419,6 +420,40 @@ build_dataset(
     model="MACE"                             # Optional: Targeting "MACE" natively renames energy/forces -> REF_energy/REF_forces.
 )
 ```
+
+---
+
+## Format Conversion and CIF Utilities
+
+The `utils` submodule includes a bidirectional converter to seamlessly translate between standardized crystallographic information files (`.cif`), `ase.Atoms` objects, and native DFT-FE structured inputs (`coordinates.inp` and `domainVectors.inp`).
+
+The converter natively handles all internal DFT-FE conventions:
+1. **Unit Conversions:** Lattices are automatically transcribed from Angstrom to atomic units (Bohr).
+2. **Coordinate Formalisms:** Periodic structures are written in fractional coordinates; fully non-periodic structures are outputted as Cartesian coordinates (in Bohr) centered natively within the domain.
+
+### Usage Example
+
+```python
+from dftfe.utils import cif_to_dftfe, dftfe_to_cif
+
+# 1. CIF to DFT-FE Inputs
+cif_to_dftfe(
+    cif_path="structure.cif",
+    output_dir="./dftfe_inputs",
+    valence_dict={'Li': 3, 'La': 11, 'Zr': 12, 'O': 6}, # Specify valences explicitly
+    write_prm=True  # Automatically write a complete parameterFile.prm natively
+)
+
+# 2. DFT-FE Inputs back to CIF
+atoms = dftfe_to_cif(
+    coord_path="./dftfe_inputs/coordinates.inp",
+    domain_path="./dftfe_inputs/domainVectors.inp",
+    cif_path="reconstructed.cif",
+    pbc=[True, True, True]
+)
+```
+
+> Additional utility functions `atoms_to_dftfe()` and `dftfe_to_atoms()` exist mirroring the above syntax for operations circumventing explicit reading/writing of `.cif` files on disk.
 
 ---
 
