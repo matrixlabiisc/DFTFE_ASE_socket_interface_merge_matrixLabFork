@@ -43,6 +43,8 @@ namespace dftfe
       update_inversejacobians = 0x0010,
 
       update_jxw = 0x0020,
+
+      update_collocation_gradients = 0x0040,
     };
 
     inline UpdateFlags
@@ -146,6 +148,12 @@ namespace dftfe
       init(const FEBasisOperations<ValueTypeBasisCoeff,
                                    ValueTypeBasisData,
                                    memorySpaceSrc> &basisOperationsSrc);
+
+      /*The shape functions centered at the quadrature points derived from
+       * quadId1 evaluated at quadId2 */
+      void
+      shapeFunctionsCenteredAtQuad1EvaluatedAtQuad2(const dftfe::uInt quadId1,
+                                                    const dftfe::uInt quadId2);
 
       /**
        * @brief sets internal variables and optionally resizes internal temp storage for interpolation operations
@@ -379,6 +387,12 @@ namespace dftfe
       shapeFunctionGradientData(bool transpose = false) const;
 
       /**
+       * @brief Collocation shape function gradient values at quadrature points.
+       */
+      const dftfe::utils::MemoryStorage<ValueTypeBasisCoeff, memorySpace> &
+      collocationShapeFunctionGradientData() const;
+
+      /**
        * @brief Inverse Jacobian matrices, for cartesian cells returns the
        * diagonal elements of the inverse Jacobian matrices for each cell, for
        * affine cells returns the 3x3 inverse Jacobians for each cell otherwise
@@ -458,6 +472,26 @@ namespace dftfe
                        ->second :
                      d_shapeFunctionGradientBasisData.find(d_quadratureID)
                        ->second;
+          }
+      }
+
+      /**
+       * @brief Collocation shape function gradient values at quadrature points in ValueTypeBasisData.
+       */
+      const auto &
+      collocationShapeFunctionGradientBasisData() const
+      {
+        if constexpr (std::is_same<ValueTypeBasisCoeff,
+                                   ValueTypeBasisData>::value)
+          {
+            return d_collocationShapeFunctionGradientData.find(d_quadratureID)
+              ->second;
+          }
+        else
+          {
+            return d_collocationShapeFunctionGradientBasisData
+              .find(d_quadratureID)
+              ->second;
           }
       }
 
@@ -944,6 +978,9 @@ namespace dftfe
         d_shapeFunctionGradientDataInternalLayout;
       std::map<dftfe::uInt,
                dftfe::utils::MemoryStorage<ValueTypeBasisCoeff, memorySpace>>
+        d_collocationShapeFunctionGradientData;
+      std::map<dftfe::uInt,
+               dftfe::utils::MemoryStorage<ValueTypeBasisCoeff, memorySpace>>
         d_shapeFunctionGradientData;
       std::map<dftfe::uInt,
                dftfe::utils::MemoryStorage<ValueTypeBasisCoeff, memorySpace>>
@@ -961,6 +998,9 @@ namespace dftfe
       std::map<dftfe::uInt,
                dftfe::utils::MemoryStorage<ValueTypeBasisData, memorySpace>>
         d_shapeFunctionBasisData;
+      std::map<dftfe::uInt,
+               dftfe::utils::MemoryStorage<ValueTypeBasisData, memorySpace>>
+        d_collocationShapeFunctionGradientBasisData;
       std::map<dftfe::uInt,
                dftfe::utils::MemoryStorage<ValueTypeBasisData, memorySpace>>
         d_shapeFunctionGradientBasisData;
@@ -1059,8 +1099,9 @@ namespace dftfe
         d_stiffnessVectorCoeffType;
       dftfe::utils::MemoryStorage<ValueTypeBasisCoeff, memorySpace>
         d_inverseStiffnessVectorCoeffType;
-
-
+      std::map<std::pair<dftfe::uInt, dftfe::uInt>,
+               dftfe::utils::MemoryStorage<ValueTypeBasisData, memorySpace>>
+        d_shapeFnValQuad1ToQuad2;
       mutable std::map<
         dftfe::uInt,
         std::vector<dftfe::linearAlgebra::MultiVector<
@@ -1215,6 +1256,14 @@ namespace dftfe
         ValueTypeBasisCoeff                      *quadratureValues,
         ValueTypeBasisCoeff                      *quadratureGradients,
         const std::pair<dftfe::uInt, dftfe::uInt> cellRange) const;
+
+
+      void
+      interpolateQ1ToQ2(const double     *Q1Field,
+                        const dftfe::uInt quadRule1,
+                        const dftfe::uInt quadRule2,
+                        double           *Q2Field,
+                        const dftfe::uInt numComponents) const;
 
       // FIXME Untested function
       /**

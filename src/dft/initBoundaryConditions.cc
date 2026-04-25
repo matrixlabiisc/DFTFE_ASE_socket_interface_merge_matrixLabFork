@@ -232,12 +232,18 @@ namespace dftfe
       C_num1DQuad(d_dftParamsPtr->finiteElementPolynomialOrder)));
     // SparsityPattern VEctor
     quadratureVector.push_back(dealii::QGauss<1>(8));
-    d_densityQuadratureId         = 0;
-    d_nlpspQuadratureId           = 1;
-    d_gllQuadratureId             = 2;
-    d_lpspQuadratureId            = 3;
-    d_feOrderPlusOneQuadratureId  = 4;
-    d_sparsityPatternQuadratureId = 5;
+    quadratureVector.push_back(
+      dealii::QGauss<1>(d_dftParamsPtr->useIntermediateDensityQuadrature ?
+                          d_dftParamsPtr->intermediateDensityQuadratureRule :
+                          1));
+
+    d_densityQuadratureId             = 0;
+    d_nlpspQuadratureId               = 1;
+    d_gllQuadratureId                 = 2;
+    d_lpspQuadratureId                = 3;
+    d_feOrderPlusOneQuadratureId      = 4;
+    d_sparsityPatternQuadratureId     = 5;
+    d_intermediateDensityQuadratureId = 6;
 
 
     double init_mf;
@@ -279,14 +285,19 @@ namespace dftfe
               d_gllQuadratureId,
               d_lpspQuadratureId,
               d_feOrderPlusOneQuadratureId,
-              d_sparsityPatternQuadratureId};
+              d_sparsityPatternQuadratureId,
+              d_intermediateDensityQuadratureId};
             std::vector<dftfe::basis::UpdateFlags> updateFlags{
-              updateFlagsAll,
+              updateFlagsAll | dftfe::basis::update_collocation_gradients,
               updateFlagsAll,
               updateFlagsGLL,
               updateFlagsLPSP,
               updateFlagsfeOrderPlusOne,
-              updateFlagssparsityPattern};
+              updateFlagssparsityPattern,
+              d_dftParamsPtr->useIntermediateDensityQuadrature ?
+                dftfe::basis::update_values | dftfe::basis::update_gradients |
+                  dftfe::basis::update_inversejacobians :
+                dftfe::basis::update_default};
             d_basisOperationsPtrHost->init(matrix_free_data,
                                            d_constraintsVector,
                                            d_densityDofHandlerIndex,
@@ -302,6 +313,15 @@ namespace dftfe
                 true,
                 !d_dftParamsPtr->approxOverlapMatrix);
             d_basisOperationsPtrHost->computeInverseSqrtMassVector(true, false);
+            if (d_dftParamsPtr->useIntermediateDensityQuadrature)
+              {
+                d_basisOperationsPtrHost
+                  ->shapeFunctionsCenteredAtQuad1EvaluatedAtQuad2(
+                    d_intermediateDensityQuadratureId, d_densityQuadratureId);
+                d_basisOperationsPtrHost
+                  ->shapeFunctionsCenteredAtQuad1EvaluatedAtQuad2(
+                    d_intermediateDensityQuadratureId, d_gllQuadratureId);
+              }
           }
       }
     if (!d_dftParamsPtr->useDevice && recomputeBasisData)
@@ -313,30 +333,35 @@ namespace dftfe
         dftfe::uInt BVec = std::min(d_dftParamsPtr->chebyWfcBlockSize,
                                     bandGroupLowHighPlusOneIndices[1]);
 
-
-        d_basisOperationsPtrHost->createScratchMultiVectors(1, 4);
+        const dftfe::uInt numWfnComponents =
+          (d_dftParamsPtr->noncolin || d_dftParamsPtr->hasSOC) ? 2 : 1;
+        d_basisOperationsPtrHost->createScratchMultiVectors(numWfnComponents,
+                                                            4);
         d_basisOperationsPtrHost->createScratchMultiVectors(
-          BVec, (d_dftParamsPtr->useReformulatedChFSI) ? 4 : 2);
-        if (d_dftParamsPtr->useSinglePrecCheby)
-          d_basisOperationsPtrHost->createScratchMultiVectorsSinglePrec(BVec,
-                                                                        2);
-        if (d_numEigenValues % BVec != 0)
-          d_basisOperationsPtrHost->createScratchMultiVectors(
-            d_numEigenValues % BVec,
-            (d_dftParamsPtr->useReformulatedChFSI) ? 4 : 2);
+          BVec * numWfnComponents,
+          (d_dftParamsPtr->useReformulatedChFSI) ? 4 : 2);
         if (d_dftParamsPtr->useSinglePrecCheby)
           d_basisOperationsPtrHost->createScratchMultiVectorsSinglePrec(
-            d_numEigenValues % BVec, 2);
+            BVec * numWfnComponents, 2);
+        if (d_numEigenValues % BVec != 0)
+          d_basisOperationsPtrHost->createScratchMultiVectors(
+            (d_numEigenValues % BVec) * numWfnComponents,
+            (d_dftParamsPtr->useReformulatedChFSI) ? 4 : 2);
+        if (d_dftParamsPtr->useSinglePrecCheby)
+          if (d_numEigenValues % BVec != 0)
+            d_basisOperationsPtrHost->createScratchMultiVectorsSinglePrec(
+              (d_numEigenValues % BVec) * numWfnComponents, 2);
 
         dftfe::uInt BVec2 = std::min(d_dftParamsPtr->wfcBlockSize,
                                      bandGroupLowHighPlusOneIndices[1]);
         if (BVec != BVec2)
           {
             d_basisOperationsPtrHost->createScratchMultiVectors(
-              BVec2, (d_dftParamsPtr->useReformulatedChFSI) ? 4 : 2);
+              BVec2 * numWfnComponents,
+              (d_dftParamsPtr->useReformulatedChFSI) ? 4 : 2);
             if (d_numEigenValues % BVec2 != 0)
               d_basisOperationsPtrHost->createScratchMultiVectors(
-                d_numEigenValues % BVec2,
+                (d_numEigenValues % BVec2) * numWfnComponents,
                 (d_dftParamsPtr->useReformulatedChFSI) ? 4 : 2);
           }
       }
@@ -349,10 +374,13 @@ namespace dftfe
             d_basisOperationsPtrDevice->init(*d_basisOperationsPtrHost);
             const dftfe::uInt BVec =
               std::min(d_dftParamsPtr->chebyWfcBlockSize, d_numEigenValues);
+            const dftfe::uInt numWfnComponents =
+              (d_dftParamsPtr->noncolin || d_dftParamsPtr->hasSOC) ? 2 : 1;
 
-            d_basisOperationsPtrDevice->createScratchMultiVectors(1, 4);
             d_basisOperationsPtrDevice->createScratchMultiVectors(
-              BVec,
+              numWfnComponents, 4);
+            d_basisOperationsPtrDevice->createScratchMultiVectors(
+              BVec * numWfnComponents,
               d_dftParamsPtr->overlapComputeCommunCheby ?
                 (d_dftParamsPtr->useReformulatedChFSI &&
                  !d_dftParamsPtr->useSinglePrecCheby) ?
@@ -364,7 +392,8 @@ namespace dftfe
                 2);
             if (d_dftParamsPtr->useSinglePrecCheby)
               d_basisOperationsPtrDevice->createScratchMultiVectorsSinglePrec(
-                BVec, d_dftParamsPtr->overlapComputeCommunCheby ? 4 : 2);
+                BVec * numWfnComponents,
+                d_dftParamsPtr->overlapComputeCommunCheby ? 4 : 2);
 
             d_basisOperationsPtrDevice->computeCellStiffnessMatrix(
               d_feOrderPlusOneQuadratureId, 50, true, false);
@@ -414,10 +443,13 @@ namespace dftfe
         d_basisOperationsPtrDevice->clearScratchMultiVectors();
         const dftfe::uInt BVec =
           std::min(d_dftParamsPtr->chebyWfcBlockSize, d_numEigenValues);
+        const dftfe::uInt numWfnComponents =
+          (d_dftParamsPtr->noncolin || d_dftParamsPtr->hasSOC) ? 2 : 1;
 
-        d_basisOperationsPtrDevice->createScratchMultiVectors(1, 4);
+        d_basisOperationsPtrDevice->createScratchMultiVectors(numWfnComponents,
+                                                              4);
         d_basisOperationsPtrDevice->createScratchMultiVectors(
-          BVec,
+          BVec * numWfnComponents,
           d_dftParamsPtr->overlapComputeCommunCheby ?
             (d_dftParamsPtr->useReformulatedChFSI &&
              !d_dftParamsPtr->useSinglePrecCheby) ?
@@ -429,7 +461,8 @@ namespace dftfe
             2);
         if (d_dftParamsPtr->useSinglePrecCheby)
           d_basisOperationsPtrDevice->createScratchMultiVectorsSinglePrec(
-            BVec, d_dftParamsPtr->overlapComputeCommunCheby ? 4 : 2);
+            BVec * numWfnComponents,
+            d_dftParamsPtr->overlapComputeCommunCheby ? 4 : 2);
       }
 #endif
 

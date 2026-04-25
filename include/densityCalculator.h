@@ -36,6 +36,7 @@ namespace dftfe
     std::shared_ptr<dftfe::linearAlgebra::BLASWrapper<memorySpace>>
                               &BLASWrapperPtr,
     const dftfe::uInt          matrixFreeDofhandlerIndex,
+    const dftfe::uInt          intermediateQuadratureIndex,
     const dftfe::uInt          quadratureIndex,
     const std::vector<double> &kPointCoords,
     const std::vector<double> &kPointWeights,
@@ -65,6 +66,7 @@ namespace dftfe
     const std::pair<dftfe::uInt, dftfe::uInt> cellRange,
     const std::pair<dftfe::uInt, dftfe::uInt> vecRange,
     const dftfe::uInt                         nQuadsPerCell,
+    const dftfe::uInt                         nCells,
     double                                   *partialOccupVec,
     NumberType                               *wfcQuadPointData,
     NumberType                               *gradWfcQuadPointData,
@@ -72,7 +74,9 @@ namespace dftfe
     double                                   *gradRhoCellsWfcContributions,
     double                                   *rho,
     double                                   *gradRho,
-    const bool                                isEvaluateGradRho);
+    const bool                                isEvaluateGradRho,
+    const bool                                isNonCollin,
+    const bool                                hasSOC);
 
   template <typename NumberType>
   void
@@ -87,7 +91,9 @@ namespace dftfe
     double                                   *kCoord,
     NumberType                               *wfcQuadPointData,
     NumberType                               *gradWfcQuadPointData,
-    double *kineticEnergyDensityCellsWfcContributions,
-    double *tau);
+    double    *kineticEnergyDensityCellsWfcContributions,
+    double    *tau,
+    const bool isNonCollin,
+    const bool hasSOC);
 } // namespace dftfe
 #endif
