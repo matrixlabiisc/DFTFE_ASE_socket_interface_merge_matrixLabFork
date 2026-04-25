@@ -582,12 +582,15 @@ namespace dftfe
               d_scratchFolderName + "/coordinates.inp";
             {
               std::ofstream coordsFile(dftfeCoordsFileName);
-              coordsFile.precision(16);
               for (const auto &row : dftfeCoordinates)
                 {
                   for (size_t i = 0; i < row.size(); ++i)
                     {
-                      coordsFile << row[i] << (i == row.size() - 1 ? "" : " ");
+                      if (i < 2) // atomic number and valence charge: integers
+                        coordsFile << static_cast<int>(row[i]);
+                      else       // fractional/Cartesian coordinates: fixed 16 d.p.
+                        coordsFile << std::fixed << std::setprecision(16) << row[i];
+                      coordsFile << (i == row.size() - 1 ? "" : " ");
                     }
                   coordsFile << "\n";
                 }
@@ -601,7 +604,7 @@ namespace dftfe
               d_scratchFolderName + "/domainVectors.inp";
             {
               std::ofstream cellFile(dftfeCellFileName);
-              cellFile.precision(16);
+              cellFile << std::fixed << std::setprecision(16);
               for (const auto &row : cell)
                 {
                   for (size_t i = 0; i < row.size(); ++i)
@@ -921,14 +924,18 @@ namespace dftfe
               }
 
 
-            system(cmd.c_str());
+            if (keepScratch) {
+              cmd = "sed -i 's/set KEEP SCRATCH FOLDER.*/set KEEP SCRATCH FOLDER=true/g' " +
+                    parameter_file_path;
+              system(cmd.c_str());
+            }
+
             system("sync"); // Force filesystem flush
           }
 
         MPI_Barrier(d_mpi_comm_parent);
         sleep(3); // Increased wait for NFS consistency
         d_dftfeParamsPtr                    = new dftfe::dftParameters;
-        d_dftfeParamsPtr->keepScratchFolder = keepScratch;
         d_dftfeParamsPtr->parse_parameters(parameter_file_path,
                                            d_mpi_comm_parent,
                                            (verbosity >= 1),
@@ -941,6 +948,8 @@ namespace dftfe
                                            false
 #endif
                                            );
+        d_dftfeParamsPtr->keepScratchFolder = keepScratch;
+
 #ifdef DFTFE_WITH_DEVICE
         d_dftfeParamsPtr->useDevice = useDevice;
 #endif
