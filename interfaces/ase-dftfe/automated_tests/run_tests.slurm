@@ -7,6 +7,7 @@
 #SBATCH --gres=gpu:8
 #SBATCH --time=06:00:00
 #SBATCH --output=slurm_tests_%j.out
+#SBATCH --chdir=/home/pa01/Mehul/DFTFE/interfaces/ase-dftfe/automated_tests
 
 echo "=========================================="
 echo "ASE-DFTFE Automated Test Suite"
@@ -35,8 +36,6 @@ PSP_LIBRARY="${DFTFE_ROOT}/interfaces/ase-dftfe/psp_library"
 source ~/.venvs/ase-env/bin/activate
 
 # ── Run the suite ─────────────────────────────────────────────────────────
-cd "$(dirname "$0")"
-
 python test_suite.py \
     --dftfe-real    "${DFTFE_REAL}" \
     --dftfe-complex "${DFTFE_COMPLEX}" \

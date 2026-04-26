@@ -64,14 +64,11 @@ def load_case(name: str):
     return mod.run
 
 
-def force_rmse_mev_per_ang(forces_ha_per_bohr: np.ndarray) -> float:
-    """Compute RMSE of force components in meV/Å."""
-    # 1 Ha/Bohr = 1 Hartree/Bohr
-    # convert to eV/Å then to meV/Å
+def force_rmse_mev_per_ang(computed: np.ndarray, ref: np.ndarray) -> float:
+    """RMSE of (computed - ref) force vectors, converted to meV/Å."""
     conv = (Hartree / eV) / (Bohr / Angstrom)   # Ha/Bohr → eV/Å
-    forces_ev_ang = forces_ha_per_bohr * conv
-    rmse_ev_ang = math.sqrt(np.mean(forces_ev_ang**2))
-    return rmse_ev_ang * 1000   # meV/Å
+    diff_ev_ang = (computed - ref) * conv
+    return math.sqrt(np.mean(diff_ev_ang**2)) * 1000   # meV/Å
 
 
 def check_energy(computed: float, ref: float) -> tuple:
@@ -80,13 +77,12 @@ def check_energy(computed: float, ref: float) -> tuple:
     return diff < ENERGY_TOL_HA, diff
 
 
-def check_forces(forces_ha_per_bohr: np.ndarray, ref_rmse: float | None) -> tuple:
+def check_forces(computed: np.ndarray, ref_forces: np.ndarray) -> tuple:
     """Returns (passed: bool, rmse_mev_ang: float).
-    If ref_rmse is None, check against the threshold directly.
+    RMSE is of (computed - ref) vectors.
     """
-    rmse = force_rmse_mev_per_ang(forces_ha_per_bohr)
-    passed = rmse < FORCE_RMSE_THRESH_MEV_ANG
-    return passed, rmse
+    rmse = force_rmse_mev_per_ang(computed, ref_forces)
+    return rmse < FORCE_RMSE_THRESH_MEV_ANG, rmse
 
 
 # ── Main ───────────────────────────────────────────────────────────────────
@@ -159,16 +155,18 @@ def run_suite(args):
         force_status = None
         force_note   = ""
         if forces_ha_per_bohr is not None:
-            ref_rmse    = ref.get("forces_rmse_mev_per_ang")
-            f_pass, rmse = check_forces(forces_ha_per_bohr, ref_rmse)
-            if seeded:
-                refs[name]["forces_rmse_mev_per_ang"] = round(rmse, 6)
+            ref_forces_list = ref.get("forces_ha_per_bohr")
+            if seeded or ref_forces_list is None:
+                # Auto-seed: save the computed forces as reference
+                refs[name]["forces_ha_per_bohr"] = forces_ha_per_bohr.tolist()
                 force_status = "SEEDED"
-                force_note   = f"force RMSE = {rmse:.3f} meV/Å  (saved as reference)"
+                force_note   = f"forces saved as reference ({forces_ha_per_bohr.shape[0]} atoms)"
             else:
+                ref_forces = np.array(ref_forces_list)
+                f_pass, rmse = check_forces(forces_ha_per_bohr, ref_forces)
                 force_status = "PASS" if f_pass else "FAIL"
                 force_note   = (
-                    f"force RMSE = {rmse:.3f} meV/Å  "
+                    f"force RMSE(computed-ref) = {rmse:.3f} meV/Å  "
                     f"(threshold {FORCE_RMSE_THRESH_MEV_ANG} meV/Å)"
                 )
 

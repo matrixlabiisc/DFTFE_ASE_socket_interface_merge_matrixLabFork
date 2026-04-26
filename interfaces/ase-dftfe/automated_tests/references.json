@@ -1,28 +1,28 @@
 {
   "_comment": "Reference values for ASE-DFTFE automated tests. Energy in Hartree. null = not yet seeded (will be auto-populated on first run).",
   "co2_nonperiodic": {
-    "energy_ha": -3.764958137229561430e+01,
+    "energy_ha": -37.649581372295614,
     "forces_rmse_mev_per_ang": null,
     "_source": "co2_gs_socket_merge_test.log"
   },
   "graphene_periodic": {
-    "energy_ha": -1.140143769852464217e+01,
+    "energy_ha": -11.401437698524642,
     "forces_rmse_mev_per_ang": null,
     "_source": "graphene_socket_test.log"
   },
   "al_bulk_periodic": {
-    "energy_ha": -9.242132802264341862e+00,
+    "energy_ha": -9.242132802264342,
     "forces_rmse_mev_per_ang": null,
     "_source": "al_bulk_socket_test.log"
   },
   "n2_nonperiodic": {
-    "energy_ha": null,
-    "forces_rmse_mev_per_ang": null,
+    "energy_ha": -20.641688948796197,
+    "forces_rmse_mev_per_ang": 8694.968012,
     "_source": "auto-seeded on first run"
   },
   "relax_o2": {
-    "energy_ha": null,
-    "forces_rmse_mev_per_ang": null,
+    "energy_ha": -31.7647783703347,
+    "forces_rmse_mev_per_ang": 1.159702,
     "_source": "auto-seeded on first run"
   }
 }
