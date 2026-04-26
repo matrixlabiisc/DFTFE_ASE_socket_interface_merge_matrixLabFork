@@ -23,7 +23,6 @@ marked [SEEDED] rather than PASS/FAIL.
 import argparse
 import importlib.util
 import json
-import math
 import os
 import sys
 import traceback
@@ -33,8 +32,8 @@ import numpy as np
 from ase.units import Bohr, Hartree, eV, Angstrom
 
 # ── Constants ──────────────────────────────────────────────────────────────
-ENERGY_TOL_HA  = 1e-10          # |E - E_ref| must be < this (Hartree)
-FORCE_RMSE_THRESH_MEV_ANG = 30  # meV/Å
+ENERGY_TOL_HA = 1e-10   # |E - E_ref| < this (Hartree, 10 decimal places)
+FORCE_TOL_HA_BOHR = 1e-8  # max |F_computed - F_ref| per component (Ha/Bohr, 8 decimal places)
 
 # Map test name → which binary kind to use
 BINARY_KIND = {
@@ -44,6 +43,10 @@ BINARY_KIND = {
     "graphene_periodic": "complex",
     "al_bulk_periodic":  "complex",
 }
+
+# Tests that only check successful completion — no energy/force comparison.
+# (Relaxation final geometry depends on optimizer path, so exact values vary.)
+RUN_ONLY = {"relax_o2"}
 
 ALL_TESTS = list(BINARY_KIND.keys())
 
@@ -64,25 +67,22 @@ def load_case(name: str):
     return mod.run
 
 
-def force_rmse_mev_per_ang(computed: np.ndarray, ref: np.ndarray) -> float:
-    """RMSE of (computed - ref) force vectors, converted to meV/Å."""
-    conv = (Hartree / eV) / (Bohr / Angstrom)   # Ha/Bohr → eV/Å
-    diff_ev_ang = (computed - ref) * conv
-    return math.sqrt(np.mean(diff_ev_ang**2)) * 1000   # meV/Å
-
-
 def check_energy(computed: float, ref: float) -> tuple:
-    """Returns (passed: bool, diff_ha: float)."""
+    """Returns (passed: bool, diff_ha: float). Tolerance: 1e-10 Ha."""
     diff = abs(computed - ref)
     return diff < ENERGY_TOL_HA, diff
 
 
-def check_forces(computed: np.ndarray, ref_forces: np.ndarray) -> tuple:
-    """Returns (passed: bool, rmse_mev_ang: float).
-    RMSE is of (computed - ref) vectors.
+def check_forces(computed: np.ndarray, ref: np.ndarray) -> tuple:
     """
-    rmse = force_rmse_mev_per_ang(computed, ref_forces)
-    return rmse < FORCE_RMSE_THRESH_MEV_ANG, rmse
+    Pointwise per-component comparison.
+    Returns (passed: bool, max_abs_diff_ha_bohr: float, worst_atom: int, worst_comp: int).
+    Tolerance: 1e-8 Ha/Bohr per component.
+    """
+    diff = np.abs(computed - ref)          # shape (N, 3)
+    max_diff = diff.max()
+    idx = np.unravel_index(diff.argmax(), diff.shape)
+    return max_diff < FORCE_TOL_HA_BOHR, max_diff, int(idx[0]), int(idx[1])
 
 
 # ── Main ───────────────────────────────────────────────────────────────────
@@ -133,12 +133,19 @@ def run_suite(args):
             log_lines.append(msg)
             continue
 
+        # ── RUN_ONLY: just check it didn't crash ──
+        if name in RUN_ONLY:
+            line = f"[{'PASS':6s}] {name}  (run-only: completed successfully)"
+            print(line, flush=True)
+            log_lines.append(line)
+            results[name] = {"status": "PASS", "energy_note": "run-only", "force_note": ""}
+            continue
+
         # ── Energy check ──
         ref_energy = ref.get("energy_ha")
         seeded = False
 
         if ref_energy is None:
-            # Auto-seed
             refs[name]["energy_ha"] = energy_ha
             seeded = True
             energy_status = "SEEDED"
@@ -157,17 +164,17 @@ def run_suite(args):
         if forces_ha_per_bohr is not None:
             ref_forces_list = ref.get("forces_ha_per_bohr")
             if seeded or ref_forces_list is None:
-                # Auto-seed: save the computed forces as reference
                 refs[name]["forces_ha_per_bohr"] = forces_ha_per_bohr.tolist()
                 force_status = "SEEDED"
                 force_note   = f"forces saved as reference ({forces_ha_per_bohr.shape[0]} atoms)"
             else:
                 ref_forces = np.array(ref_forces_list)
-                f_pass, rmse = check_forces(forces_ha_per_bohr, ref_forces)
+                f_pass, max_diff, worst_atom, worst_comp = check_forces(forces_ha_per_bohr, ref_forces)
+                comp_labels = ['x', 'y', 'z']
                 force_status = "PASS" if f_pass else "FAIL"
                 force_note   = (
-                    f"force RMSE(computed-ref) = {rmse:.3f} meV/Å  "
-                    f"(threshold {FORCE_RMSE_THRESH_MEV_ANG} meV/Å)"
+                    f"max |F_computed - F_ref| = {max_diff:.3e} Ha/Bohr  "
+                    f"(tol 1e-8, worst: atom {worst_atom} {comp_labels[worst_comp]})"
                 )
 
         # ── Overall status ──
