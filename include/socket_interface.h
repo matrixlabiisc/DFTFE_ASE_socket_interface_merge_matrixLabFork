@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 #include <mpi.h>
-#include "dftfeWrapper.h"
+#include <dftfe/dftfeWrapper.h>
 
 namespace dftfe
 {
