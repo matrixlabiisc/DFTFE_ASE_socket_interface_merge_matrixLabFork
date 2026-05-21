@@ -29,7 +29,7 @@
 #include <dftfe/geometryOptimizationClass.h>
 #include <dftfe/git_info.h>
 
-#include <dftfe/dftUtils.h>
+#include <dftfe/dftfe/dftUtils.h>
 #include "socket_interface.h"
 
   
