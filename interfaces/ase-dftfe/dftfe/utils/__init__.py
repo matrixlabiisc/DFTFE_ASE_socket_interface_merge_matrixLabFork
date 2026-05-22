@@ -4,15 +4,19 @@ from .dataset_recorder import DatasetRecorder
 from .parser import parse_dftfe_log
 from .dataset_builder import build_dataset
 from .cif_converter import cif_to_dftfe, dftfe_to_cif, atoms_to_dftfe, dftfe_to_atoms
+from .prm_to_ase import parse_prm, dftfe_dir_to_atoms, generate_ase_script
 
 __all__ = [
-    "extract_ml_frame", 
-    "append_to_extxyz", 
-    "DatasetRecorder", 
-    "parse_dftfe_log", 
+    "extract_ml_frame",
+    "append_to_extxyz",
+    "DatasetRecorder",
+    "parse_dftfe_log",
     "build_dataset",
     "cif_to_dftfe",
     "dftfe_to_cif",
     "atoms_to_dftfe",
     "dftfe_to_atoms",
+    "parse_prm",
+    "dftfe_dir_to_atoms",
+    "generate_ase_script",
 ]

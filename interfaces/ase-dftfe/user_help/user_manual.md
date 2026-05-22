@@ -15,6 +15,7 @@ By operating via a socket, the DFT-FE client remains persistent throughout the e
 - [Getting Started](#getting-started)
 - [Machine Learning Dataset Generation](#machine-learning-dataset-generation)
 - [Format Conversion and CIF Utilities](#format-conversion-and-cif-utilities)
+- [Reading Existing DFT-FE Inputs Directly](#reading-existing-dft-fe-inputs-directly)
 - [Debugging and Tips](#debugging-and-tips)
 - [Resources and Contact](#resources--contact)
 
@@ -454,6 +455,176 @@ atoms = dftfe_to_cif(
 ```
 
 > Additional utility functions `atoms_to_dftfe()` and `dftfe_to_atoms()` exist mirroring the above syntax for operations circumventing explicit reading/writing of `.cif` files on disk.
+
+---
+
+## Reading Existing DFT-FE Inputs Directly
+
+If you already have a DFT-FE benchmark or run directory containing `coordinates.inp`, `domainVectors.inp`, and a `.prm` parameter file, you do not need to rebuild the structure manually. The `dftfe.utils` submodule provides three functions that read those files directly and either hand you back a live ASE setup or write a standalone Python script for you.
+
+### The three utilities at a glance
+
+| Function | What it does |
+|---|---|
+| `parse_prm(prm_path)` | Parses any DFT-FE `.prm` file → flat `dict` with dot-notation keys |
+| `dftfe_dir_to_atoms(dir, ...)` | Reads a run directory → returns `(atoms, calc_kwargs)` with `DFTFE` attached |
+| `generate_ase_script(dir, ...)` | Writes a ready-to-run `*_ase.py` script from any benchmark directory |
+
+### 1. Parsing a `.prm` file
+
+```python
+from dftfe.utils import parse_prm
+
+prm = parse_prm("/path/to/Li2O_scf.prm")
+
+print(prm["SOLVER MODE"])           # 'GS'
+print(prm["Geometry.NATOMS"])      # 95
+print(prm["SCF parameters.TOLERANCE"])   # 1e-06
+print(prm["Brillouin zone k point sampling options."
+          "Monkhorst-Pack (MP) grid generation.SAMPLING POINTS 1"])  # 2
+```
+
+Subsection hierarchy is flattened with `.` separators. All values are automatically coerced to `int`, `float`, or `bool` where unambiguous.
+
+### 2. Building atoms + calculator from a directory
+
+```python
+from dftfe.utils import dftfe_dir_to_atoms
+
+atoms, calc_kwargs = dftfe_dir_to_atoms(
+    "/path/to/Li2O_fcc/dftfe",
+    prm_file="Li2O_scf.prm",                        # auto-detected if omitted
+    dftfe_binary="/path/to/build_gpu/release/complex/dftfe",
+    np=8,                                             # MPI ranks
+)
+
+# The calculator is attached but not yet launched:
+energy = atoms.get_potential_energy()   # triggers the socket server
+forces = atoms.get_forces()
+atoms.calc.close()                      # cleanly shuts down DFT-FE
+```
+
+`dftfe_dir_to_atoms` automatically:
+- Reads `coordinates.inp` and `domainVectors.inp` (Bohr → Å)
+- Infers PBC from `PERIODIC1/2/3` in the `.prm`
+- Reconstructs the full `DFTFE(...)` keyword set (k-grid, XC, mesh, SCF, PSPs) from the `.prm`
+- Reads `pseudo.inp` to build the per-element `psp_path` dict
+
+You can override any inferred parameter via `extra_calc_kwargs`:
+```python
+atoms, kw = dftfe_dir_to_atoms(
+    "/path/to/dftfe",
+    extra_calc_kwargs={"verbosity": 4, "keep_scratch": True}
+)
+```
+
+### 3. Generating a standalone script
+
+If you prefer a plain Python file you can inspect, edit, and submit to SLURM:
+
+```python
+from dftfe.utils import generate_ase_script
+
+generate_ase_script(
+    "/path/to/Li2O_fcc/dftfe",
+    prm_file="Li2O_scf.prm",
+    dftfe_binary="/path/to/build_gpu/release/complex/dftfe",
+    np=8,
+    output_script="Li2O_scf_ase.py",   # defaults to <prm_stem>_ase.py
+)
+```
+
+This writes a self-contained `Li2O_scf_ase.py` that mirrors every parameter found in the `.prm`, with the `DFTFE_BIN` and `SLURM_NTASKS` environment variables respected at runtime.
+
+### 4. Full example — Li₂O FCC benchmark (95 atoms)
+
+The Li₂O FCC supercell benchmark (`dftfe-benchmarks/accuracyBenchmarks/Li2O_fcc/dftfe/`) provides a complete, ready-to-run illustration. The directory already contains:
+
+```
+Li2O_fcc/dftfe/
+├── Li2O_scf.prm           ← SCF-only parameter file
+├── Li2O_ionRelax.prm      ← Ion relaxation parameter file
+├── coordinates.inp        ← 95 atoms (31 O + 64 Li) in fractional coords
+├── domainVectors.inp      ← Cubic cell: 17.4233 Bohr ≈ 9.22 Å per side
+├── pseudo.inp             ← Maps Z→.upf (Li=3, O=8)
+├── Li_ONCV_PBE-1.2.upf
+├── O_ONCV_PBE-1.2.upf
+├── Li2O_fcc_gs.py         ← Hand-written ASE ground-state script
+└── run_Li2O_fcc_gs.slurm  ← SLURM submission script
+```
+
+The hand-written ASE script (`Li2O_fcc_gs.py`) is a reference implementation that matches the `.prm` exactly:
+
+```python
+from dftfe import DFTFE
+from dftfe.utils import dftfe_to_atoms
+
+atoms = dftfe_to_atoms(
+    coord_path="coordinates.inp",
+    domain_path="domainVectors.inp",
+    pbc=[True, True, True],
+)
+
+calc = DFTFE(
+    command="mpirun -np 8 /path/to/build_gpu/release/complex/dftfe",
+    host="localhost",
+    port=0,
+
+    # Mesh — matches prm: MESH SIZE AROUND ATOM=1.2, ATOM BALL RADIUS=6, POLYNOMIAL ORDER=7
+    mesh_size=1.2,
+    atom_ball_radius=6.0,
+    polynomial_order=7,
+
+    # SCF — matches prm: TOLERANCE=1e-6, TEMPERATURE=500, MIXING METHOD=ANDERSON, MIXING PARAMETER=0.7
+    tolerance=1e-6,
+    fermi_temp=500.0,
+    mixing_scheme="ANDERSON",
+    scf_mixing=0.7,
+
+    # k-grid — matches prm: 2×2×2 MP, shift (1,1,1), time-reversal symmetry
+    mp_grid=(2, 2, 2),
+    mp_grid_shift=(1, 1, 1),
+    use_time_reversal_symmetry=True,
+    npkpt=2,
+
+    # XC — matches prm: MGGA-R2SCAN (requires complex build)
+    xc="MGGA-R2SCAN",
+
+    # Pseudopotentials — resolved from pseudo.inp
+    pseudopotential_calculation=True,
+    psp_path={
+        "Li": "/path/to/Li_ONCV_PBE-1.2.upf",
+        "O":  "/path/to/O_ONCV_PBE-1.2.upf",
+    },
+
+    use_device=True,
+    compute_forces=True,
+    verbosity=1,
+    log_file="Li2O_fcc_gs.log",
+)
+
+atoms.calc = calc
+energy = atoms.get_potential_energy()
+forces = atoms.get_forces()
+```
+
+To submit:
+```bash
+sbatch run_Li2O_fcc_gs.slurm
+```
+
+Or, equivalently, use `generate_ase_script` to auto-produce the same script from the `.prm`:
+```python
+from dftfe.utils import generate_ase_script
+generate_ase_script(
+    "/path/to/Li2O_fcc/dftfe",
+    prm_file="Li2O_scf.prm",
+    dftfe_binary="/path/to/build_gpu/release/complex/dftfe",
+)
+# → writes Li2O_scf_ase.py with all parameters filled in automatically
+```
+
+> **Note on XC functional and binary flavour:** `MGGA-R2SCAN` requires the **complex** DFT-FE build (`build_gpu/release/complex/dftfe`). GGA-PBE and LDA calculations use the real build.
 
 ---
 
