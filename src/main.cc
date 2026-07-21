@@ -29,10 +29,9 @@
 #include <dftfe/geometryOptimizationClass.h>
 #include <dftfe/git_info.h>
 
-#include <dftfe/dftfe/dftUtils.h>
+#include <dftfe/dftUtils.h>
 #include "socket_interface.h"
 
-  
 //
 // C++ headers
 //
@@ -50,7 +49,6 @@
 int
 main(int argc, char *argv[])
 {
-  //
   MPI_Init(&argc, &argv);
 
 #if defined(DFTFE_WITH_MDI)
