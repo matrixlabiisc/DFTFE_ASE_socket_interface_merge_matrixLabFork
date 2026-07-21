@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=ase_dftfe_parity
 #SBATCH --nodes=1
-#SBATCH --ntasks=4
+#SBATCH --ntasks=8
 #SBATCH --cpus-per-task=1
-#SBATCH --time=00:40:00
+#SBATCH --time=01:00:00
 #SBATCH --output=slurm_parity_%j.out
 #SBATCH --chdir=/home/pa01/Mehul/DFTFE/interfaces/ase-dftfe/tests
 
@@ -23,11 +23,11 @@ export DEAL_II_NUM_THREADS=1
 export DFTFE_NUM_THREADS=1
 
 source ~/.venvs/ase-env/bin/activate
-export PARITY_NPROC="${SLURM_NTASKS:-4}"
 export PARITY_TMP="/home/pa01/Mehul/DFTFE/interfaces/ase-dftfe/tests/parity_scratch"
 mkdir -p "$PARITY_TMP"
 
-python parity_check.py
+# Demo passed as $1 (ex1/ex2/ex3); parity_check.py picks per-demo nproc.
+python parity_check.py "${1:-ex1}"
 EXIT=$?
 echo "parity exit: $EXIT  ($(date))"
 exit $EXIT
