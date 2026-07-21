@@ -78,7 +78,8 @@ class SocketBackend(Backend):
             log.info("listening on %s:%d", self.host, self.port)
 
     def _launch(self) -> None:
-        argv = shlex.split(self.command) + ["--socket", f"{self.host}:{self.port}"]
+        base = self.command if isinstance(self.command, (list, tuple)) else shlex.split(self.command)
+        argv = list(base) + ["--socket", f"{self.host}:{self.port}"]
         env = None
         if self.env:
             env = dict(os.environ)

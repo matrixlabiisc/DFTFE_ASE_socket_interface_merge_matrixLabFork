@@ -9,8 +9,14 @@
 
 Thin, backend-agnostic ASE ``Calculator``: it builds a request in DFT-FE atomic
 units (Bohr, Hartree), hands it to a :class:`~dftfe_ase.backends.base.Backend`,
-and converts the response back to ASE units (eV, eV/A, eV/A^3). All transport
-concerns live in the backend; all wire-format concerns in :mod:`dftfe_ase.protocol`.
+and converts the response back to ASE units (eV, eV/A, eV/A^3).
+
+Launch is zero-config where possible. In order of preference:
+  * ``backend=`` — an explicit Backend (tests, custom transports);
+  * ``command=`` — an explicit launch command (power-user escape hatch);
+  * otherwise **auto**: resolve binaries (kwargs/env/``cluster=``/container/PATH),
+    pick a launcher (``launcher=`` / cluster profile / autodetect), and build the
+    command at run time — choosing the real vs complex binary from the k-points.
 """
 
 from __future__ import annotations
@@ -23,6 +29,9 @@ from ase.stress import full_3x3_to_voigt_6_stress
 from ase.units import Bohr, Hartree
 
 from .backends.socket import SocketBackend, DFTFEError
+from .binary import select_binary_kind
+from .config import get_profile, resolve_binaries
+from .launchers import detect_launcher, get_launcher
 
 log = logging.getLogger("dftfe_ase")
 
@@ -49,11 +58,18 @@ class DFTFE(Calculator):
 
     def __init__(
         self,
-        command: str = "dftfe",
+        command=None,
         host: str = "127.0.0.1",
         port: int = 0,
         *,
         backend=None,
+        cluster: str | None = None,
+        launcher: str | None = None,
+        nproc: int | None = None,
+        gpus_per_task: int | None = None,
+        dftfe_real: str | None = None,
+        dftfe_complex: str | None = None,
+        bin_dir: str | None = None,
         env: dict | None = None,
         cwd: str | None = None,
         compute_forces: bool = True,
@@ -86,14 +102,68 @@ class DFTFE(Calculator):
             raise TypeError(f"unknown DFT-FE parameter(s): {sorted(unknown)}")
         self._params = {k: v for k, v in params.items() if v is not None}
 
-        # Backend is injectable (tests pass a fake); default is the socket backend.
-        self.backend = backend if backend is not None else SocketBackend(
-            command, host=host, port=port, env=env, cwd=cwd,
-            connect_timeout=connect_timeout, log_file=log_file, verbosity=verbosity,
+        # Backend connection settings retained for (possibly lazy) construction.
+        self._host = host
+        self._port = port
+        self._cwd = cwd
+        self._connect_timeout = connect_timeout
+        self._log_file = log_file
+
+        profile = get_profile(cluster) if cluster else None
+        merged_env = dict(profile.env) if profile else {}
+        if env:
+            merged_env.update(env)
+        self._env = merged_env or None
+
+        if backend is not None:
+            self.backend = backend
+        elif command is not None:
+            self.backend = self._make_socket_backend(command)
+        else:
+            # Auto-launch: defer command construction to run time (needs pbc for
+            # the real/complex decision). Resolve binaries + launcher now.
+            self.backend = None
+            self._binaries = resolve_binaries(
+                real=dftfe_real, complex=dftfe_complex, bin_dir=bin_dir, cluster=cluster
+            )
+            if launcher is not None:
+                self._launcher = get_launcher(launcher, gpus_per_task=gpus_per_task)
+            elif profile is not None:
+                self._launcher = get_launcher(profile.launcher, gpus_per_task=gpus_per_task)
+            else:
+                self._launcher = detect_launcher(gpus_per_task=gpus_per_task)
+            self._nproc = nproc
+
+    # ── launch construction ────────────────────────────────────────────
+    def _make_socket_backend(self, command):
+        return SocketBackend(
+            command, host=self._host, port=self._port, env=self._env, cwd=self._cwd,
+            connect_timeout=self._connect_timeout, log_file=self._log_file,
+            verbosity=self.verbosity,
         )
 
+    def build_launch_argv(self, pbc):
+        """Argv for launching DFT-FE for a system with the given ``pbc``.
+
+        Pure/testable: picks real vs complex from k-points, resolves the binary
+        path, and asks the launcher to build the command. Does not spawn anything.
+        """
+        kind = select_binary_kind(
+            self._params.get("mp_grid"), self._params.get("mp_grid_shift"), pbc
+        )
+        binary = self._binaries.path_for(kind)
+        nproc = self._nproc or self._launcher.default_nproc() or 1
+        return self._launcher.build_command(binary, nproc)
+
+    def _ensure_backend(self, atoms):
+        if self.backend is None:
+            argv = self.build_launch_argv(atoms.get_pbc())
+            self.backend = self._make_socket_backend(argv)
+
+    # ── ASE Calculator API ─────────────────────────────────────────────
     def calculate(self, atoms=None, properties=("energy",), system_changes=all_changes):
         super().calculate(atoms, properties, system_changes)
+        self._ensure_backend(self.atoms)
         want_stress = self.compute_stress or ("stress" in properties)
 
         request = {
