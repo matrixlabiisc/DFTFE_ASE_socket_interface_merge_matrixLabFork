@@ -28,6 +28,8 @@ slurm-*.out
 
 # Test suite outputs (references.json is intentionally NOT ignored — it is a fixture)
 test_results_*.txt
+parity_scratch/
+parity_ex1_native_*/
 
 # QE / external-code scratch sometimes produced by comparison scripts
 *.save/
