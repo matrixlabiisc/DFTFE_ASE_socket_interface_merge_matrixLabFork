@@ -27,7 +27,7 @@
 #include <netdb.h>
 #include <cmath>
 #include <iomanip>
-#include <git_info.h>
+#include <dftfe/git_info.h>
 
 namespace dftfe
 {
