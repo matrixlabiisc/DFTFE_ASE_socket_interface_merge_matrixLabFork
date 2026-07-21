@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=ase_dftfe_smoke
 #SBATCH --nodes=1
-#SBATCH --ntasks=2
+#SBATCH --ntasks=4
 #SBATCH --cpus-per-task=1
-#SBATCH --gres=gpu:2
+#SBATCH --gres=gpu:4
 #SBATCH --time=00:30:00
 #SBATCH --output=slurm_smoke_%j.out
 #SBATCH --chdir=/home/pa01/Mehul/DFTFE/interfaces/ase-dftfe/tests
@@ -23,7 +23,9 @@ export DFTFE_NUM_THREADS=1
 
 source ~/.venvs/ase-env/bin/activate
 
-python smoke_real_n2.py
+SCRIPT="${1:-smoke_real_n2.py}"
+echo "running: $SCRIPT"
+python "$SCRIPT"
 EXIT=$?
 echo "smoke exit: $EXIT  ($(date))"
 exit $EXIT
