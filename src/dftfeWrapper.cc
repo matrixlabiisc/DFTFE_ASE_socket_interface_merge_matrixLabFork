@@ -349,6 +349,8 @@ namespace dftfe
     // New parameters
     const dftfe::uInt wfcBlockSize,
     const dftfe::uInt chebyWfcBlockSize,
+    const dftfe::Int  densityQuadratureRule,
+    const dftfe::Int  useSinglePrecCheby,
     const dftfe::Int  smearedNuclearCharges,
     const dftfe::Int  useGroupSymmetry,
     const dftfe::Int  useTimeReversalSymmetry,
@@ -909,8 +911,8 @@ namespace dftfe
             // Only write if > 0 (0 implies auto/default)
             if (wfcBlockSize != 999999)
               {
-                cmd = "sed -i 's/set WFC BLOCK SIZE.*/set WFC BLOCK SIZE=" +
-                      std::to_string(wfcBlockSize) + "/g' " +
+                cmd = "sed -i '/subsection Eigen-solver parameters/a\\    set WFC BLOCK SIZE=" +
+                      std::to_string(wfcBlockSize) + "' " +
                       parameter_file_path;
                 system(cmd.c_str());
               }
@@ -918,12 +920,32 @@ namespace dftfe
             if (chebyWfcBlockSize != 999999)
               {
                 cmd =
-                  "sed -i 's/set CHEBY WFC BLOCK SIZE.*/set CHEBY WFC BLOCK SIZE=" +
-                  std::to_string(chebyWfcBlockSize) + "/g' " +
+                  "sed -i '/subsection Eigen-solver parameters/a\\    set CHEBY WFC BLOCK SIZE=" +
+                  std::to_string(chebyWfcBlockSize) + "' " +
                   parameter_file_path;
                 system(cmd.c_str());
               }
 
+            // Mehul: DENSITY QUADRATURE RULE (e.g. 10 for accuracy benchmarks)
+            if (densityQuadratureRule != -1)
+              {
+                cmd =
+                  "sed -i '/subsection Finite element mesh parameters/a\\  set DENSITY QUADRATURE RULE=" +
+                  std::to_string(densityQuadratureRule) + "' " +
+                  parameter_file_path;
+                system(cmd.c_str());
+              }
+
+            // Mehul: USE SINGLE PREC CHEBY (significant performance flag)
+            if (useSinglePrecCheby != -1)
+              {
+                const std::string singlePrec = useSinglePrecCheby ? "true" : "false";
+                cmd =
+                  "sed -i '/subsection Eigen-solver parameters/a\\    set USE SINGLE PREC CHEBY=" +
+                  singlePrec + "' " +
+                  parameter_file_path;
+                system(cmd.c_str());
+              }
 
             if (keepScratch) {
               cmd = "sed -i 's/set KEEP SCRATCH FOLDER.*/set KEEP SCRATCH FOLDER=true/g' " +

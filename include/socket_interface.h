@@ -60,6 +60,8 @@ namespace dftfe
       // New parameters
       dftfe::uInt &wfc_block_size,
       dftfe::uInt &cheby_wfc_block_size,
+      dftfe::Int  &density_quadrature_rule,
+      dftfe::Int  &use_single_prec_cheby,
       dftfe::Int  &smeared_nuclear_charges,
       dftfe::Int  &use_group_symmetry,
       dftfe::Int  &use_time_reversal_symmetry, // Mehul -> added time reversal symmetry

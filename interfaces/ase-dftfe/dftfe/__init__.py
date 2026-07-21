@@ -59,6 +59,8 @@ class dftfeSocketCalculator(Calculator):
                  # New parameters added in expansion
                  wfc_block_size=None, # New explicit parameter (0 = auto)
                  cheby_wfc_block_size=None, # New explicit parameter (0 = auto)
+                 density_quadrature_rule=None, # DENSITY QUADRATURE RULE (e.g. 10)
+                 use_single_prec_cheby=None, # USE SINGLE PREC CHEBY (True/False)
                  compute_forces=True, # New explicit parameter (Default True for standard ASE behavior)
                  compute_stress=False, # New explicit parameter
                  smeared_nuclear_charges=None,
@@ -107,6 +109,8 @@ class dftfeSocketCalculator(Calculator):
         # New parameters
         self.wfc_block_size = wfc_block_size
         self.cheby_wfc_block_size = cheby_wfc_block_size
+        self.density_quadrature_rule = density_quadrature_rule
+        self.use_single_prec_cheby = use_single_prec_cheby
         self.smeared_nuclear_charges = smeared_nuclear_charges
         self.use_group_symmetry = use_group_symmetry
         self.use_time_reversal_symmetry = use_time_reversal_symmetry
@@ -244,6 +248,8 @@ class dftfeSocketCalculator(Calculator):
             "orthogonalization_type": self.orthogonalization_type,
             "wfc_block_size": self.wfc_block_size,
             "cheby_wfc_block_size": self.cheby_wfc_block_size,
+            "density_quadrature_rule": self.density_quadrature_rule,
+            "use_single_prec_cheby": self.use_single_prec_cheby,
             "smeared_nuclear_charges": self.smeared_nuclear_charges,
             "use_group_symmetry": self.use_group_symmetry,
             "use_time_reversal_symmetry": self.use_time_reversal_symmetry,

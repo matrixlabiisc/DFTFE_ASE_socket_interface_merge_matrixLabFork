@@ -249,6 +249,16 @@ def _prm_to_calc_kwargs(prm: Dict[str, Any],
     if max_scf is not None:
         kwargs["max_scf_iterations"] = int(max_scf)
 
+    dqr_key = "Finite element mesh parameters.DENSITY QUADRATURE RULE"
+    dqr = prm.get(dqr_key)
+    if dqr is not None:
+        kwargs["density_quadrature_rule"] = int(dqr)
+
+    spc_key = _SCF_PRE + "Eigen-solver parameters.USE SINGLE PREC CHEBY"
+    spc = prm.get(spc_key)
+    if spc is not None:
+        kwargs["use_single_prec_cheby"] = bool(spc)
+
     # ── XC functional
     xc = prm.get(_DFT_PRE + "EXCHANGE CORRELATION TYPE")
     if xc is not None:

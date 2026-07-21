@@ -221,6 +221,8 @@ namespace dftfe
       // New parameters
       const dftfe::uInt wfcBlockSize               = 999999,
       const dftfe::uInt chebyWfcBlockSize          = 999999,
+      const dftfe::Int  densityQuadratureRule      = -1,
+      const dftfe::Int  useSinglePrecCheby         = -1,
       const dftfe::Int  smearedNuclearCharges      = -1,
       const dftfe::Int  useGroupSymmetry           = -1,
       const dftfe::Int  useTimeReversalSymmetry    = -1,

@@ -336,6 +336,8 @@ namespace dftfe
                               // New parameters
                               dftfe::uInt &wfc_block_size,
                               dftfe::uInt &cheby_wfc_block_size,
+                              dftfe::Int  &density_quadrature_rule,
+                              dftfe::Int  &use_single_prec_cheby,
                               dftfe::Int  &smeared_nuclear_charges,
                               dftfe::Int  &use_group_symmetry,
                               dftfe::Int  &use_time_reversal_symmetry,
@@ -389,6 +391,10 @@ namespace dftfe
     wfc_block_size = parse_scalar<dftfe::uInt>(json, "wfc_block_size", 999999);
     cheby_wfc_block_size =
       parse_scalar<dftfe::uInt>(json, "cheby_wfc_block_size", 999999);
+    density_quadrature_rule =
+      parse_scalar<dftfe::Int>(json, "density_quadrature_rule", -1);
+    use_single_prec_cheby =
+      parse_scalar<dftfe::Int>(json, "use_single_prec_cheby", -1);
 
     smeared_nuclear_charges =
       parse_scalar<dftfe::Int>(json, "smeared_nuclear_charges", -1);
@@ -540,6 +546,8 @@ namespace dftfe
         // New parameters
         dftfe::uInt wfc_block_size;
         dftfe::uInt cheby_wfc_block_size;
+        dftfe::Int  density_quadrature_rule;
+        dftfe::Int  use_single_prec_cheby;
         dftfe::Int  smeared_nuclear_charges;
         dftfe::Int  use_group_symmetry;
         dftfe::Int  use_time_reversal_symmetry;
@@ -574,6 +582,8 @@ namespace dftfe
                       orthogonalization_type,
                       wfc_block_size,
                       cheby_wfc_block_size,
+                      density_quadrature_rule,
+                      use_single_prec_cheby,
                       smeared_nuclear_charges,
                       use_group_symmetry,
                       use_time_reversal_symmetry,
@@ -732,6 +742,8 @@ namespace dftfe
                        orthogonalization_type,
                        wfc_block_size,
                        cheby_wfc_block_size,
+                       density_quadrature_rule,
+                       use_single_prec_cheby,
                        smeared_nuclear_charges,
                        use_group_symmetry,
                        use_time_reversal_symmetry,
