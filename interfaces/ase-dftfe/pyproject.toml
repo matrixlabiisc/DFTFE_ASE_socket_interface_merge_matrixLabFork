@@ -3,31 +3,41 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ase-dftfe-socket"
-version = "0.1.0.a"
-description = "Socket-based ASE interface for DFT-FE"
+name = "ase-dftfe"
+version = "1.0.0.dev0"
+description = "ASE calculator interface for DFT-FE (persistent socket backend)"
 readme = "README.md"
-authors = [
-  { name = "Mehul Darak", email = "10pipioff@gmail.com" }
-]
+authors = [{ name = "Mehul Darak", email = "mehuldarak@iisc.ac.in" }]
 license = { text = "LGPL-2.1-or-later" }
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 classifiers = [
+    "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: GNU Lesser General Public License v2.1 or later (LGPLv2.1+)",
-    "Operating System :: OS Independent",
+    "Operating System :: POSIX :: Linux",
     "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Scientific/Engineering :: Chemistry",
 ]
 dependencies = [
     "ase>=3.22.0",
     "numpy",
 ]
 
+[project.optional-dependencies]
+test = ["pytest"]
+dev = ["pytest", "ruff"]
+
 [project.urls]
-"Homepage" = "https://github.com/dftfeDevelopers/dftfe"
+Homepage = "https://github.com/dftfeDevelopers/dftfe"
+Source = "https://github.com/dftfeDevelopers/dftfe/tree/publicGithubDevelop/interfaces/ase-dftfe"
 
+# ASE discovers the calculator via this entry point.
 [project.entry-points."ase.calculators"]
-dftfe = "dftfe:DFTFE"
+dftfe = "dftfe_ase:DFTFE"
 
-[tool.setuptools]
-packages = ["dftfe", "dftfe.utils"]
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
