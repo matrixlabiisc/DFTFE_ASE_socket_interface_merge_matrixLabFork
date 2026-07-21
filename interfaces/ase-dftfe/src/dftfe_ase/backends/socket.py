@@ -23,6 +23,7 @@ import os
 import shlex
 import socket
 import subprocess
+import time
 
 from .base import Backend
 from ..protocol import HANDSHAKE, CMD_EXIT, MessageChannel, ProtocolError
@@ -62,6 +63,7 @@ class SocketBackend(Backend):
         self._proc: subprocess.Popen | None = None
         self._log_fh = None
         self._started = False
+        self.last_wait_s = None  # wall time of the last socket round-trip (send->recv)
 
     # ── helpers ─────────────────────────────────────────────────────────
     def _verbose(self) -> bool:
@@ -129,8 +131,11 @@ class SocketBackend(Backend):
                 f"DFT-FE process exited (code {self._proc.returncode}); see {self.log_file}"
             )
         try:
+            t0 = time.perf_counter()
             self._chan.send(request)
-            return self._chan.recv()
+            response = self._chan.recv()
+            self.last_wait_s = time.perf_counter() - t0
+            return response
         except (ProtocolError, OSError) as exc:
             code = self._proc.poll() if self._proc else None
             raise DFTFEError(
