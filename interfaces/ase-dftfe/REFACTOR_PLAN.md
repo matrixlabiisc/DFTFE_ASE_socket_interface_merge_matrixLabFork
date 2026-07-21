@@ -30,6 +30,12 @@ full stack (deal.II, p4est, ELPA, ScaLAPACK, Kokkos, libxc, alglib, spglib, dftd
   `main.cc`, and socket-path hooks in `dftfeWrapper.cc`). It does **not** own the DFT-FE build/deploy —
   that stays with `install_DFTFE` + container recipes that reference it. The package's job is to be trivially
   installable and to auto-detect/configure against an existing build.
+- **Feature parity (design principle):** the ASE/socket interface must expose the **full capability set of
+  native DFT-FE** — *and* add its own ecosystem value (ASE optimizers/MD/NEB, i-PI, ML active-learning,
+  dataset tooling). The socket driver bypasses `molecularDynamicsClass`/`geometryOptimizationClass`, so any
+  capability that today lives only behind those drivers is a **parity gap to close**, not a feature to drop.
+  Density extrapolation (Lever 1) is the first identified gap; a full parity audit (P1.5) enumerates the rest
+  (restart/checkpointing, dispersion, implicit solvation, extrapolation, geo-opt/MD options, …).
 
 **Status as of this revision:** `socket_interface_merge` synced with pGD (97 upstream commits merged, PR #701
 up to date) and pushed. Committed there since sync: `density_quadrature_rule` + `use_single_prec_cheby` params;
@@ -47,22 +53,25 @@ The persistent-server architecture (Python = TCP server, MPI DFT-FE = client) is
 foundation** — it already eliminates per-call MPI spawn overhead and is correct for notebooks,
 active-learning, multi-node, and driver-orchestration use cases. **Do not replace it.** The wins are:
 
-### Lever 1 — Reuse electronic state across steps  ⭐ *impact: very high · effort: medium*
-**Grounded finding:** the socket hot-loop drives its own step loop
-(`socketDriver::run()` → `dftfeWrapper::updateAtomPositions()` → `updateAtomPositionsAndMoveMesh()`
-at `src/dftfeWrapper.cc:1257` → `computeDFTFreeEnergy()`) and **bypasses**
-`molecularDynamicsClass` / `geometryOptimizationClass`. All the state-reuse machinery lives *inside*
-those native drivers and is **not wired into the socket path**:
-- `extrapolateDensity` — 2nd-order density prediction from t, t−dt, t−2dt
-  (`molecularDynamicsClass::DensityExtrapolation` / `DensitySplitExtrapolation`)
-- `reuseWfcGeoOpt`, `reuseDensityGeoOpt` (`include/dftfe/dftParameters.h:137-162`)
+### Lever 1 — Density extrapolation predictor  *impact: moderate throughput (MD) + feature-parity · effort: high · IN SCOPE*
+**VERIFIED 2026-07-22 (reading the C++) — the earlier "cold start every step" hypothesis was WRONG.**
+`socketDriver::run()` → `dftfeWrapper::updateAtomPositions()` (`dftfeWrapper.cc:1257`) →
+`updateAtomPositionsAndMoveMesh(disp)` is called with the **default `useSingleAtomSolutionsOverride=false`**
+(`dft.h:342`), which routes to `initNoRemesh(..., useSingleAtomSolutionOverride=false)` (`moveAtoms.cc:697/733`).
+That means the previous step's **density is carried onto the moved mesh and reused**, and because the same
+`dftClass` instance persists across steps, the **wavefunctions are reused** as the Chebyshev starting
+subspace too (for no-remesh moves). So the socket loop already gets density+wfc reuse — the same per-step
+default MD uses. There is **no cold-start-per-step penalty** to remove.
 
-So every socket step re-converges the SCF from a cold-ish guess. Wiring extrapolation + wavefunction
-reuse into the socket loop is typically a **2–5× reduction in SCF iterations per MD/relaxation step** —
-the single biggest throughput win, and mostly plumbing into existing, tested DFT-FE code.
-**First: verify exactly what state `updateAtomPositionsAndMoveMesh` already preserves** (the density
-may ride the moved mesh even today; the 2nd-order *predictor* is what's definitely missing) so the
-win is sized before implementing.
+The one remaining gap is the **2nd-order density extrapolation predictor** (predict t+dt density from
+t, t−dt, t−2dt). That logic is `molecularDynamicsClass::DensityExtrapolation` / `DensitySplitExtrapolation`
+(`molecularDynamicsClass.h:450`), applied *after* `solve()`, and is a **MD-class method the socket path
+cannot reach**. Adding it means lifting the extrapolation + density-history bookkeeping down into
+`dftClass`/`dftfeWrapper` (or replicating it in `socketDriver`) and invoking it each step. Benefit is real
+but **moderate and mostly for MD** (systematic motion along a trajectory); for relaxation the gain over
+plain reuse is small. It is **in scope on the feature-parity principle** (native DFT-FE has it; the ASE
+path must too), not on raw throughput ROI — so it is a genuine C++ refactor, sequenced *after* the protocol
+freeze (P1.2). Also log when an auto-remesh forces a density reset so users see that cost.
 
 ### Lever 2 — Transport: binary framing + UNIX-domain sockets  *impact: high · effort: medium*
 - Current wire format is ASCII JSON at 16 sig-figs parsed by a hand-rolled `std::string::find`
@@ -171,11 +180,15 @@ error/status frames, gated logging, state-reuse hooks, and a cell-update path.
 - **Acceptance:** clean tree; merged tree builds & passes existing tests; mock server round-trips a request.
 
 ### P1 — Performance core (the levers) *(highest ROI)*
-- **P1.1 Lever 1 — state reuse.** Verify what `updateAtomPositionsAndMoveMesh`/`computeDFTFreeEnergy`
-  preserve; wire `extrapolateDensity` (2nd-order) + `reuseWfc/DensityGeoOpt` into `socketDriver::run()`;
-  expose as calculator options (sensible defaults on). *(very high / med)*
-  - **Acceptance:** an MD/relaxation run shows a measured drop in mean SCF iterations/step vs baseline,
-    with identical converged energies/forces to tolerance.
+- **P1.1 Lever 1 — density extrapolation predictor.** *(verification DONE — see Lever 1: density + wfc are
+  already reused each step; only the extrapolation predictor is missing, and it lives in the MD class.)*
+  Lift `DensityExtrapolation`/`DensitySplitExtrapolation` + density-history bookkeeping from
+  `molecularDynamicsClass` into `dftClass`/`dftfeWrapper`, expose a per-step API, call it from
+  `socketDriver::run()`; surface `extrapolate_density` as a calculator option; log when an auto-remesh
+  forces a density reset. *(feature-parity; high — C++ refactor; sequence after the P1.2 protocol freeze.)*
+  - **Acceptance:** an MD run shows a measured drop in mean SCF iterations/step vs the *reuse-only*
+    baseline (not a cold-start baseline), identical converged energies/forces to tolerance; relaxation shows
+    no regression.
 - **P1.2 Lever 2 — protocol.** Define `protocol.py` (schema + `PROTOCOL_VERSION` + **binary length-prefixed
   framing** for bulk arrays); reimplement C++ `receive_data`/`send_data`/`format_response` to match; add a
   versioned handshake and **error/status frames** (SCF/setup failure → `DFTFEError` in Python, not a hang);
@@ -187,6 +200,13 @@ error/status frames, gated logging, state-reuse hooks, and a cell-update path.
 - **P1.4 Cell updates (correctness+perf).** Implement the omitted cell-deformation path in `run()`; choose
   deform-vs-reinit by threshold. *(med / med)*
   - **Acceptance:** variable-cell relaxation drives the cell & reduces stress; fixed-cell unchanged.
+- **P1.5 Capability-parity audit.** Enumerate every native DFT-FE capability reachable through the file/prm
+  path but **not** through `socketDriver` (restart/checkpointing, dispersion corrections, implicit solvation,
+  density extrapolation, geo-opt/MD/NEB options, spin/constraints, …). For each: expose it through the
+  socket protocol + calculator, or record why it is out of scope. Density extrapolation (P1.1) is item #1.
+  *(feature-parity; produces the backlog that P1.1 and later parity tasks draw from.)*
+  - **Acceptance:** a checked-in parity matrix (native capability → socket status → ASE option) with no
+    silent omissions.
 
 ### P2 — Portability & seamless startup (deployable anywhere)
 - **P2.1 Launchers.** `launchers/` for Slurm/PBS/LSF + mpi/local; env auto-detect; GPU-binding per scheduler;
@@ -230,7 +250,11 @@ error/status frames, gated logging, state-reuse hooks, and a cell-update path.
 
 ## 5. Sequencing & risk notes
 - **P0 → P1** are prerequisites. Lock parity (P0.2) *before* touching the hot loop.
-- **P1.1 (state reuse) is the top ROI item** — verify preserved state first so the win is real, not assumed.
+- **P1.1 re-scoped after verification (2026-07-22):** density + wavefunctions are *already* reused per step,
+  so P1.1 is no longer a throughput fix — it is retained as a **feature-parity** deliverable (native DFT-FE
+  has density extrapolation; the ASE path must too). It is a genuine C++ refactor, sequenced *after* the
+  P1.2 protocol freeze. On pure throughput, **P1.2 (transport) and P1.4 (cell-update correctness) are the
+  foundational items**; P1.1/P1.5 close capability gaps.
 - C++ work (P1.1-P1.4) needs rebuilds on real+complex+GPU — iterate against the mock server (P0.3) to avoid rebuild churn.
 - Python P2/P3 largely parallelize once `protocol.py` (P1.2) is frozen.
 - **Highest-risk items:** multi-node reachability (P2.2) — test on a real 2-node Slurm alloc early; cell updates
