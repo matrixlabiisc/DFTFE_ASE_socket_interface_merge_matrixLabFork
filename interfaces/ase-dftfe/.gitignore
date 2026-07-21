@@ -1,0 +1,35 @@
+# ASE-DFTFE interface — ignore run-generated and build artifacts
+# (scoped to interfaces/ase-dftfe/; does not affect the DFT-FE root .gitignore)
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.so
+
+# Local dev virtualenvs
+.venv/
+venv/
+
+# DFT-FE run artifacts
+dftfeScratch*/
+*.op
+forces.txt
+forces.txt.old
+*.log
+slurm_*.out
+slurm-*.out
+
+# Test suite outputs (references.json is intentionally NOT ignored — it is a fixture)
+test_results_*.txt
+
+# QE / external-code scratch sometimes produced by comparison scripts
+*.save/
+espresso.*
+pwscf.*
