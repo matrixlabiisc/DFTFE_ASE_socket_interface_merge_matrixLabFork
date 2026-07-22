@@ -52,7 +52,10 @@ cluster — targets: **ALCF Polaris (CUDA) / Aurora (SYCL)**, **OLCF Frontier (H
 ## Cluster specifics
 - **MATRIX**: build/run modules in `COMPILING_ON_MATRIX.md` (spack + openmpi/nccl/gdrcopy, `CUDA_PATH`,
   `LIBRARY_PATH`). Shared venv `~/.venvs/ase-env` (ase+numpy+pytest). Debug partition = cn1-2 (8 GPU each).
-- **Aurora** (setup in progress at `/lus/flare/projects/DFTCalc2/Mehul`): needs ALCF proxy
+- **Aurora**: ✅ **BUILT** (SYCL/oneAPI, real + complex, socket interface compiles) at
+  `/lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe/install/{real,complex}/dftfe`. Next: pip install
+  `dftfe_ase` into `claude-env`, then a first single-point run via a PBS job (explicit `mpiexec` + Aurora
+  tile binding + `advertise_host=gethostname()`). Setup notes: needs ALCF proxy
   `http://proxy.alcf.anl.gov:3128` for internet; build via `install_DFTFE` `auroraInstall` branch
   (`module load cmake boost ninja; ./install_dftfe.sh --all`), but point its DFT-FE clone at the PUBLIC
   fork above on `ase_redesign` (Bitbucket is private). Conda env `claude-env`. SYCL/oneAPI build.
