@@ -47,8 +47,10 @@ from dftfe_ase import DFTFE  # noqa: E402
 
 REPO = "/home/pa01/Mehul/DFTFE"
 PSP_DIR = f"{REPO}/interfaces/ase-dftfe/psp_library"
-REAL_BIN = f"{REPO}/build_gpu/release/real/dftfe"
-COMPLEX_BIN = f"{REPO}/build_gpu/release/complex/dftfe"
+# Use the merged + segfault-fixed binary (build_merged), not the pre-merge build_gpu.
+BUILD_MERGED = f"{REPO}/build_merged"
+REAL_BIN = f"{BUILD_MERGED}/release/real/dftfe"
+COMPLEX_BIN = f"{BUILD_MERGED}/release/complex/dftfe"
 E_TOL = 1e-10
 F_TOL = 1e-4
 COMMON = dict(xc="GGA-PBE", fermi_temp=500.0, tolerance=5e-5)
@@ -154,8 +156,8 @@ def run_native(demo, cfg, nproc):
 
 def run_ase(cfg, nproc):
     atoms = cfg["atoms"]()
-    calc = DFTFE(cluster="matrix", nproc=nproc, use_device=False,
-                 psp_path=PSP_DIR, env={"DFTFE_PSP_PATH": PSP_DIR},
+    calc = DFTFE(bin_dir=BUILD_MERGED, launcher="mpirun", nproc=nproc,
+                 use_device=False, psp_path=PSP_DIR, env={"DFTFE_PSP_PATH": PSP_DIR},
                  keep_scratch=True, verbosity=4, log_file="parity_ase.log",
                  **COMMON, **cfg["params"])
     with calc:
