@@ -32,6 +32,17 @@ cluster — targets: **ALCF Polaris (CUDA) / Aurora (SYCL)**, **OLCF Frontier (H
   advertise `gethostname()` (not 127.0.0.1) + getaddrinfo preflight.
 - 47 pytest unit tests (mock DFT-FE, no binary needed). `build_merged/` = merged+fixed GPU binary
   (build_gpu = old pre-merge, kept as fallback — never overwrite it).
+- **Param-injection verifier** (`tests/verify_param_injection.py`, keep_scratch → inspect generated .prm):
+  confirms passed values actually REACH DFT-FE, not silently default. It caught **MIXING METHOD being
+  dropped** (template lacked the line → `sed` replace was a no-op — same bug class as WFC block size);
+  fixed to delete+append under the SCF subsection. 14/14 params now verified. (TODO: extend to ALL params
+  to catch any other replace-no-op siblings before benchmark runs.)
+- **`FileBackend`** (`backends/file.py`): native file-based DFT-FE as a Backend for apples-to-apples
+  (same ASE optimizer, socket vs file), full per-atom force parsing, any system.
+- **Benchmark coverage** (dftfe-benchmarks accuracyBenchmarks: BCC Mo GS, Li2O ion-relax, Li2O NEB):
+  all DFT-FE params map to the interface (density_quadrature_rule + use_single_prec_cheby, added this
+  session, are used by Li2O). NEB subsection is ASE-side (ase.mep.NEB). Verify meta-GGA MGGA-R2SCAN
+  support + multi-element psp dict before Li2O runs.
 
 ## Reviewer-grade gaps still open (before publishing overhead / porting)
 - Overhead needs a **native-MD head-to-head** (compare total time + mean SCF iters/step; the socket path
