@@ -52,10 +52,13 @@ cluster — targets: **ALCF Polaris (CUDA) / Aurora (SYCL)**, **OLCF Frontier (H
 ## Cluster specifics
 - **MATRIX**: build/run modules in `COMPILING_ON_MATRIX.md` (spack + openmpi/nccl/gdrcopy, `CUDA_PATH`,
   `LIBRARY_PATH`). Shared venv `~/.venvs/ase-env` (ase+numpy+pytest). Debug partition = cn1-2 (8 GPU each).
-- **Aurora**: ✅ **BUILT** (SYCL/oneAPI, real + complex, socket interface compiles) at
-  `/lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe/install/{real,complex}/dftfe`. Next: pip install
-  `dftfe_ase` into `claude-env`, then a first single-point run via a PBS job (explicit `mpiexec` + Aurora
-  tile binding + `advertise_host=gethostname()`). Setup notes: needs ALCF proxy
+- **Aurora**: ✅ **BUILT + first run WORKS** (SYCL/oneAPI, real + complex) at
+  `/lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe/install/{real,complex}/dftfe`. First ASE↔DFT-FE
+  single-point via PBS: N2 = -20.641600 Ha (matches MATRIX/CUDA to ~1e-4), exit 0, 42 s.
+  Binding used: `mpiexec -n 4 --ppn 4 --cpu-bind=list:1-8:9-16:17-24:25-32 --gpu-bind=list:0.0:0.1:1.0:1.1`
+  + `advertise_host=gethostname()`. NEXT: scaling/accuracy studies (BCC Mo GS, Li2O FCC relax, Li2O NEB)
+  from dftfe-benchmarks — with a parameter-coverage audit FIRST (do all benchmark .prm params map to the
+  interface?). Setup notes: needs ALCF proxy
   `http://proxy.alcf.anl.gov:3128` for internet; build via `install_DFTFE` `auroraInstall` branch
   (`module load cmake boost ninja; ./install_dftfe.sh --all`), but point its DFT-FE clone at the PUBLIC
   fork above on `ase_redesign` (Bitbucket is private). Conda env `claude-env`. SYCL/oneAPI build.
