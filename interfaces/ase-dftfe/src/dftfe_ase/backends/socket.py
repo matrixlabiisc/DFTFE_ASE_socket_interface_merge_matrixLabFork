@@ -64,6 +64,7 @@ class SocketBackend(Backend):
         self._log_fh = None
         self._started = False
         self.last_wait_s = None  # wall time of the last socket round-trip (send->recv)
+        self.startup_s = None    # process launch + MPI init + connect (one-time)
 
     # ── helpers ─────────────────────────────────────────────────────────
     def _verbose(self) -> bool:
@@ -118,9 +119,11 @@ class SocketBackend(Backend):
     def start(self) -> None:
         if self._started:
             return
+        t0 = time.perf_counter()
         self._start_server()
-        self._launch()
-        self._accept()
+        self._launch()          # spawn mpirun + DFT-FE (MPI init happens here)
+        self._accept()          # wait for connect + READY handshake
+        self.startup_s = time.perf_counter() - t0
         self._started = True
 
     def compute(self, request: dict) -> dict:

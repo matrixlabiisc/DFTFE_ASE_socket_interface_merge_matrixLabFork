@@ -70,23 +70,46 @@ def main():
         dyn.run(1)
         if calc.timing:
             records.append(dict(calc.timing))
+    startup = getattr(calc.backend, "startup_s", None)
     calc.close()
 
-    # Step 0 includes one-time reinit (mesh+PSP); measure steady-state steps.
+    def _sum(key):
+        return sum(r[key] for r in records if r.get(key) is not None)
+
+    # ── FULL-RUN clubbed accounting ─────────────────────────────────────────
+    # Everything DFT-FE natively does, clubbed = startup (process launch + MPI
+    # init + connect) + all per-step compute (step 0's compute already includes
+    # reinit + file read + mesh build). Interface overhead = all streaming + ASE.
+    sum_compute = _sum("dft_compute_s")
+    sum_stream = _sum("streaming_overhead_s")
+    sum_ase = _sum("ase_overhead_s")
+    startup_s = startup or 0.0
+    dftfe_work = startup_s + sum_compute
+    interface = sum_stream + sum_ase
+    grand = dftfe_work + interface
+    print("\n================ FULL-RUN overhead (clubbed, honest total) ================")
+    print(f"  steps run                : {len(records)}")
+    print(f"  startup (launch+MPI init+connect): {startup_s:.3f} s  (one-time)")
+    print(f"  DFT-FE native work total : {dftfe_work:.3f} s  (startup + reinit + mesh + all SCF+forces)")
+    print(f"  interface overhead total : {interface * 1e3:.1f} ms "
+          f"(streaming {sum_stream * 1e3:.1f} ms + ASE {sum_ase * 1e3:.1f} ms)")
+    if grand > 0:
+        print(f"  => INTERFACE OVERHEAD    : {100 * interface / grand:.4f} % of {grand:.2f} s total wall")
+    print("=" * 74)
+
+    # ── steady-state per-step (excludes the one-time startup/reinit) ─────────
     steady = records[1:] if len(records) > 1 else records
 
     def mean(key):
         vals = [r[key] for r in steady if r.get(key) is not None]
         return float(np.mean(vals)) if vals else float("nan")
 
-    print("\n================ per-step overhead (steady state) ================")
-    print(f"  steps analyzed        : {len(steady)}")
-    print(f"  mean DFT compute      : {mean('dft_compute_s'):.4f} s")
-    print(f"  mean streaming        : {mean('streaming_overhead_s'):.5f} s")
-    print(f"  mean ASE python       : {mean('ase_overhead_s'):.5f} s")
-    print(f"  mean interface total  : {mean('interface_overhead_s'):.5f} s")
+    print("--- steady-state per step (steps 2..N, startup amortized) ---")
+    print(f"  mean DFT compute       : {mean('dft_compute_s'):.4f} s")
+    print(f"  mean streaming         : {mean('streaming_overhead_s') * 1e3:.2f} ms")
+    print(f"  mean ASE python        : {mean('ase_overhead_s') * 1e3:.2f} ms")
     print(f"  mean interface OVERHEAD: {mean('interface_overhead_pct'):.3f} %")
-    print("=" * 66)
+    print("=" * 74)
 
 
 if __name__ == "__main__":
