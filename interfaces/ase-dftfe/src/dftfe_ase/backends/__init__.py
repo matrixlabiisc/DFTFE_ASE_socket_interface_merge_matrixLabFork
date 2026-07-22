@@ -14,5 +14,6 @@ added later without changing the `DFTFE` calculator.
 
 from .base import Backend
 from .socket import SocketBackend, DFTFEError
+from .file import FileBackend
 
-__all__ = ["Backend", "SocketBackend", "DFTFEError"]
+__all__ = ["Backend", "SocketBackend", "FileBackend", "DFTFEError"]
