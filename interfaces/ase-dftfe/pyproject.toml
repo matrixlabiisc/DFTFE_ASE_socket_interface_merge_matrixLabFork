@@ -41,3 +41,7 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+# Only collect test_*.py. The standalone harnesses (parity_check.py,
+# reachability_test.py, *_parity.py, overhead_debug.py, smoke_real_*.py) are run
+# directly via SLURM, not as pytest modules.
+python_files = ["test_*.py"]
