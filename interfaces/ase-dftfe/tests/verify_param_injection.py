@@ -118,6 +118,12 @@ def main():
     atoms.calc = calc
     try:
         atoms.get_potential_energy()   # triggers reinit -> writes the .prm
+    except Exception as exc:
+        # The .prm is written at reinit, BEFORE the SCF. So even if the solve
+        # crashes (e.g. a param value that's physically incompatible with this
+        # small test system), the generated .prm still lets us verify INJECTION.
+        print(f"[verify] run did not finish ({type(exc).__name__}: {exc}); "
+              f"inspecting the generated .prm anyway (injection is set at reinit).")
     finally:
         calc.close()
 
