@@ -35,3 +35,4 @@ parity_ex1_native_*/
 *.save/
 espresso.*
 pwscf.*
+verify_scratch/
