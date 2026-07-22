@@ -32,11 +32,15 @@ cluster — targets: **ALCF Polaris (CUDA) / Aurora (SYCL)**, **OLCF Frontier (H
   advertise `gethostname()` (not 127.0.0.1) + getaddrinfo preflight.
 - 47 pytest unit tests (mock DFT-FE, no binary needed). `build_merged/` = merged+fixed GPU binary
   (build_gpu = old pre-merge, kept as fallback — never overwrite it).
-- **Param-injection verifier** (`tests/verify_param_injection.py`, keep_scratch → inspect generated .prm):
-  confirms passed values actually REACH DFT-FE, not silently default. It caught **MIXING METHOD being
-  dropped** (template lacked the line → `sed` replace was a no-op — same bug class as WFC block size);
-  fixed to delete+append under the SCF subsection. 14/14 params now verified. (TODO: extend to ALL params
-  to catch any other replace-no-op siblings before benchmark runs.)
+- **Param-injection verifier** (`tests/verify_param_injection.py`, keep_scratch → inspect generated .prm;
+  inspects even if the SCF crashes, since the .prm is written at reinit): confirms passed values actually
+  REACH DFT-FE, not silently default. Caught + FIXED **5 silent-drops** (replace-sed no-op when key absent
+  from template): MIXING METHOD, ORTHOGONALIZATION TYPE, SMEARED NUCLEAR CHARGES, USE GROUP SYMMETRY,
+  LBFGS HISTORY — all now delete+append under their subsection. **18/18 params verified.**
+  KNOWN GAPS (not fixed; unused by the 3 target benchmarks): `dispersion_correction_type` needs a
+  Dispersion Correction subsection added; `start_magnetization` maps to a **non-existent** DFT-FE key
+  (initial magnetization = per-atom `m` column in coordinates.inp — a separate feature). Also: enabling
+  smeared-charges/group-symmetry crashes tiny test systems (setup, not injection).
 - **`FileBackend`** (`backends/file.py`): native file-based DFT-FE as a Backend for apples-to-apples
   (same ASE optimizer, socket vs file), full per-atom force parsing, any system.
 - **Benchmark coverage** (dftfe-benchmarks accuracyBenchmarks: BCC Mo GS, Li2O ion-relax, Li2O NEB):
