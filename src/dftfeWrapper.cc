@@ -967,6 +967,51 @@ namespace dftfe
               system(cmd.c_str());
             }
 
+            // ── Generic .prm overrides (Mehul): applied AFTER all typed
+            // injection. Format: "section|||key|||value@@@section|||key|||value".
+            // Empty section => top-level. delete-any + append (creating the
+            // subsection if missing) so nothing silently defaults. This one loop
+            // supersedes the per-parameter sed blocks for the long tail of params.
+            if (!d_socketPrmOverrides.empty())
+              {
+                const std::string ov = d_socketPrmOverrides;
+                size_t            pos = 0;
+                while (pos < ov.size())
+                  {
+                    size_t      e = ov.find("@@@", pos);
+                    std::string entry = ov.substr(
+                      pos, e == std::string::npos ? std::string::npos : e - pos);
+                    pos = (e == std::string::npos) ? ov.size() : e + 3;
+                    size_t d1 = entry.find("|||");
+                    if (d1 == std::string::npos)
+                      continue;
+                    size_t d2 = entry.find("|||", d1 + 3);
+                    if (d2 == std::string::npos)
+                      continue;
+                    std::string sec = entry.substr(0, d1);
+                    std::string key = entry.substr(d1 + 3, d2 - d1 - 3);
+                    std::string val = entry.substr(d2 + 3);
+                    cmd = "sed -i '/set " + key + " /d;/set " + key + "=/d' " +
+                          parameter_file_path;
+                    system(cmd.c_str());
+                    if (sec.empty())
+                      {
+                        cmd = "sed -i '1i set " + key + " = " + val + "' " +
+                              parameter_file_path;
+                      }
+                    else
+                      {
+                        cmd = "grep -q 'subsection " + sec + "' " +
+                              parameter_file_path + " || sed -i '1i subsection " +
+                              sec + "\\nend' " + parameter_file_path;
+                        system(cmd.c_str());
+                        cmd = "sed -i '/subsection " + sec + "/a\\    set " + key +
+                              " = " + val + "' " + parameter_file_path;
+                      }
+                    system(cmd.c_str());
+                  }
+              }
+
             system("sync"); // Force filesystem flush
           }
 
@@ -1248,6 +1293,12 @@ namespace dftfe
       for (dftfe::uInt j = 0; j < 3; ++j)
         cellStress[i][j] = -cellStressTensor[i][j];
     return cellStress;
+  }
+
+  void
+  dftfeWrapper::setSocketPrmOverrides(const std::string &overrides)
+  {
+    d_socketPrmOverrides = overrides;
   }
 
   void

@@ -730,6 +730,9 @@ namespace dftfe
                 << "socketDriver: Initializing dftfeWrapper with explicit data..."
                 << std::endl;
 
+            // Generic .prm overrides (typed-kwarg long tail + extra_prm + .prm
+            // passthrough) applied inside reinit after the typed injection.
+            dft.setSocketPrmOverrides(parse_string(json, "prm_overrides", ""));
             dft.reinit(comm,
                        use_device,
                        new_coords,

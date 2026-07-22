@@ -238,6 +238,15 @@ namespace dftfe
            const bool       computeIonForces = true,  // New parameter
            const bool       computeStress    = false);         // New parameter
 
+    /**
+     * @brief Store generic .prm overrides ("section|||key|||value@@@...") applied
+     * during reinit AFTER the typed parameter injection, via one generic
+     * delete+append loop. Enables full-Python parameter control and .prm
+     * passthrough over the socket without per-parameter sed. @author Mehul Darak
+     */
+    void
+    setSocketPrmOverrides(const std::string &overrides);
+
     void
     clear();
 
@@ -412,6 +421,7 @@ namespace dftfe
     MPI_Comm       d_mpi_comm_parent;
     dftBase       *d_dftfeBasePtr;
     dftParameters *d_dftfeParamsPtr;
+    std::string    d_socketPrmOverrides; // generic .prm overrides (Mehul)
     std::string    d_scratchFolderName;
     bool           d_isDeviceToMPITaskBindingSetInternally;
     bool           d_keepScratch;

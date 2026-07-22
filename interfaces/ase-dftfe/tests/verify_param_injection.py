@@ -53,7 +53,9 @@ CHECKS = {
     "orthogonalization_type":      (r"ORTHOGONALIZATION TYPE", "CGS", False),
     "smeared_nuclear_charges":     (r"SMEARED NUCLEAR CHARGES", "true", False),
     "use_group_symmetry":          (r"USE GROUP SYMMETRY", "true", False),
-    "mixing_history":              (r"LBFGS HISTORY", 8, True),
+    "mixing_history":              (r"MIXING HISTORY", 8, True),   # generic path; was mis-mapped to LBFGS HISTORY
+    "chebyshev_polynomial_degree": (r"CHEBYSHEV POLYNOMIAL DEGREE", 18, True),  # generic path
+    "base_mesh_size":              (r"BASE MESH SIZE", 2.5, True),             # generic path
 }
 # Known gaps (deliberately NOT injected): dispersion_correction_type needs a
 # Dispersion Correction subsection added; start_magnetization maps to a
@@ -68,6 +70,7 @@ PARAMS = dict(
     use_time_reversal_symmetry=True, mp_grid=(2, 2, 2), mp_grid_shift=(1, 1, 1),
     npkpt=2, orthogonalization_type="CGS", smeared_nuclear_charges=1,
     use_group_symmetry=1, mixing_history=8,
+    chebyshev_polynomial_degree=18, base_mesh_size=2.5,
 )
 
 
@@ -116,6 +119,7 @@ PARAMS_B = dict(
     use_time_reversal_symmetry=False, mp_grid=(3, 3, 3), mp_grid_shift=(0, 0, 0),
     npkpt=3, orthogonalization_type="GS", smeared_nuclear_charges=0,
     use_group_symmetry=0, mixing_history=12,
+    chebyshev_polynomial_degree=22, base_mesh_size=3.0,
 )
 CHECKS_B = {  # expected value in set B (for the same keys as CHECKS)
     "polynomial_order": 6, "mesh_size": 1.9, "atom_ball_radius": 5.0,
@@ -125,6 +129,7 @@ CHECKS_B = {  # expected value in set B (for the same keys as CHECKS)
     "use_time_reversal_symmetry": "false", "mp_grid": 3, "mp_grid_shift": 0,
     "npkpt": 3, "orthogonalization_type": "GS", "smeared_nuclear_charges": "false",
     "use_group_symmetry": "false", "mixing_history": 12,
+    "chebyshev_polynomial_degree": 22, "base_mesh_size": 3.0,
 }
 
 

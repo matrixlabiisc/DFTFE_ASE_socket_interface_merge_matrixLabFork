@@ -33,23 +33,69 @@ from .backends.socket import SocketBackend, DFTFEError
 from .binary import select_binary_kind
 from .config import get_profile, resolve_binaries
 from .launchers import detect_launcher, get_launcher
+from .params import BY_KWARG, to_prm_entries
 
 log = logging.getLogger("dftfe_ase")
 
-# Optional DFT-FE parameters passed straight through to the socket driver.
-# Wire keys match the C++ socketDriver's parse_request(). (A typed parameter
-# table with validation replaces this passthrough in a later phase.)
+# Typed params kept on the existing per-key C++ path (verified "wired"). Note:
+# mixing_history + dispersion_correction_type are intentionally NOT here — they
+# route through the generic .prm-override path (mixing_history was mis-mapped to
+# LBFGS HISTORY; the generic path sends the correct MIXING HISTORY).
 _OPTIONAL_PARAMS = (
     "mp_grid", "mp_grid_shift", "spin_polarized", "start_magnetization",
     "fermi_temp", "npkpt", "mesh_size", "scf_mixing", "mixing_scheme",
     "polynomial_order", "tolerance", "xc", "atom_ball_radius", "num_bands",
     "orthogonalization_type", "wfc_block_size", "cheby_wfc_block_size",
     "density_quadrature_rule", "use_single_prec_cheby", "smeared_nuclear_charges",
-    "use_group_symmetry", "use_time_reversal_symmetry", "mixing_history",
-    "max_scf_iterations", "dispersion_correction_type",
+    "use_group_symmetry", "use_time_reversal_symmetry",
+    "max_scf_iterations",
     "pseudopotential_calculation", "pseudopotential_filename", "keep_scratch",
     "verbosity",
 )
+
+# Params routed through the generic .prm-override path ("planned" in params.py):
+# the long tail + the ones the typed sed mishandled.
+_GENERIC_KWARGS = {k for k, s in BY_KWARG.items() if s.status == "planned"}
+
+
+def _serialize_overrides(entries):
+    return "@@@".join(f"{e['section'] or ''}|||{e['key']}|||{e['value']}" for e in entries)
+
+
+def _parse_prm_file(path):
+    """Parse a DFT-FE .prm into generic {section,key,value} entries (option A)."""
+    import re
+    entries, stack = [], []
+    for line in open(path):
+        s = line.strip()
+        m = re.match(r"subsection\s+(.+)", s)
+        if m:
+            stack.append(m.group(1).strip())
+            continue
+        if s == "end":
+            if stack:
+                stack.pop()
+            continue
+        m = re.match(r"set\s+([^=]+?)\s*=\s*(.*)", s)
+        if m:
+            entries.append({"section": stack[-1] if stack else "",
+                            "key": m.group(1).strip(), "value": m.group(2).strip()})
+    return entries
+
+
+def _extra_prm_entries(extra):
+    """extra_prm: {key: value} | {(section, key): value} | {'section|||key': value}."""
+    out = []
+    for k, v in extra.items():
+        if isinstance(k, tuple):
+            section, key = k
+        elif "|||" in k:
+            section, key = k.split("|||", 1)
+        else:
+            spec = next((s for s in BY_KWARG.values() if s.prm_key == k), None)
+            section, key = (spec.section or "", spec.prm_key) if spec else ("", k)
+        out.append({"section": section or "", "key": key, "value": v})
+    return out
 
 
 class DFTFE(Calculator):
@@ -82,6 +128,8 @@ class DFTFE(Calculator):
         log_file: str = "dftfe.log",
         verbosity: int | None = None,
         debug_timing: bool = False,
+        extra_prm: dict | None = None,
+        prm_file: str | None = None,
         **params,
     ):
         super().__init__()
@@ -102,10 +150,21 @@ class DFTFE(Calculator):
         if verbosity is not None:
             params.setdefault("verbosity", verbosity)
 
-        unknown = set(params) - set(_OPTIONAL_PARAMS)
+        unknown = set(params) - set(_OPTIONAL_PARAMS) - _GENERIC_KWARGS
         if unknown:
             raise TypeError(f"unknown DFT-FE parameter(s): {sorted(unknown)}")
-        self._params = {k: v for k, v in params.items() if v is not None}
+        self._params = {k: v for k, v in params.items()
+                        if v is not None and k in _OPTIONAL_PARAMS}
+        # Generic .prm overrides: "planned" kwargs (B) + extra_prm dict + full
+        # .prm file (A) -> one {section,key,value} list applied by the C++
+        # generic injector. No per-parameter sed, no silent defaulting.
+        entries = to_prm_entries({k: v for k, v in params.items()
+                                  if v is not None and k in _GENERIC_KWARGS})
+        if extra_prm:
+            entries += _extra_prm_entries(extra_prm)
+        if prm_file:
+            entries += _parse_prm_file(prm_file)
+        self._prm_overrides = _serialize_overrides(entries)
 
         # Backend connection settings retained for (possibly lazy) construction.
         self._bind_host = bind_host
@@ -185,6 +244,8 @@ class DFTFE(Calculator):
             "use_device": bool(self.use_device),
         }
         request.update(self._params)
+        if self._prm_overrides:
+            request["prm_overrides"] = self._prm_overrides
 
         result = self.backend.compute(request)
         if isinstance(result, dict) and result.get("error"):
