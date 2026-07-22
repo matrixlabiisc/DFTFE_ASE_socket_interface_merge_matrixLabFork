@@ -39,9 +39,11 @@ class SocketBackend(Backend):
     def __init__(
         self,
         command: str = "dftfe",
-        host: str = "127.0.0.1",
+        host: str | None = None,  # deprecated alias for advertise_host
         port: int = 0,
         *,
+        bind_host: str = "0.0.0.0",
+        advertise_host: str | None = None,
         env: dict | None = None,
         cwd: str | None = None,
         connect_timeout: float = 120.0,
@@ -49,7 +51,14 @@ class SocketBackend(Backend):
         verbosity: int | None = None,
     ):
         self.command = command
-        self.host = host
+        # bind_host: interface the server listens on. 0.0.0.0 accepts connections
+        #   from any node (required for multi-node, where DFT-FE rank 0 may be on
+        #   a different node than this Python process).
+        # advertise_host: the address DFT-FE is told to connect back to. It MUST
+        #   be routable from the compute nodes -> the node hostname, NOT 127.0.0.1
+        #   (localhost would make an off-node rank 0 connect to itself and hang).
+        self.bind_host = bind_host
+        self.advertise_host = advertise_host or host or socket.gethostname()
         self.port = port
         self.env = env
         self.cwd = cwd
@@ -71,18 +80,33 @@ class SocketBackend(Backend):
         # NOTE: guarded against None — the legacy bug was `if self.verbosity > 0`.
         return self.verbosity is not None and self.verbosity > 0
 
+    def _preflight_advertise(self) -> None:
+        # The advertised host must be resolvable so DFT-FE rank 0 can connect
+        # back. Fail fast with a clear message rather than a mysterious hang.
+        try:
+            socket.getaddrinfo(self.advertise_host, self.port or None,
+                               proto=socket.IPPROTO_TCP)
+        except socket.gaierror as exc:
+            raise DFTFEError(
+                f"advertise_host {self.advertise_host!r} does not resolve; DFT-FE "
+                f"would fail to connect back. Set advertise_host to a hostname/IP "
+                f"routable from the compute nodes."
+            ) from exc
+
     def _start_server(self) -> None:
         self._server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._server.bind((self.host, self.port))
+        self._server.bind((self.bind_host, self.port))
         self.port = self._server.getsockname()[1]  # resolve if port was 0
         self._server.listen(1)
         if self._verbose():
-            log.info("listening on %s:%d", self.host, self.port)
+            log.info("listening on %s:%d, advertising %s:%d to DFT-FE",
+                     self.bind_host, self.port, self.advertise_host, self.port)
 
     def _launch(self) -> None:
+        self._preflight_advertise()
         base = self.command if isinstance(self.command, (list, tuple)) else shlex.split(self.command)
-        argv = list(base) + ["--socket", f"{self.host}:{self.port}"]
+        argv = list(base) + ["--socket", f"{self.advertise_host}:{self.port}"]
         env = None
         if self.env:
             env = dict(os.environ)

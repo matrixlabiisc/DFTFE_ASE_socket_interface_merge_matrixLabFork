@@ -60,7 +60,8 @@ class DFTFE(Calculator):
     def __init__(
         self,
         command=None,
-        host: str = "127.0.0.1",
+        bind_host: str = "0.0.0.0",
+        advertise_host: str | None = None,
         port: int = 0,
         *,
         backend=None,
@@ -107,7 +108,8 @@ class DFTFE(Calculator):
         self._params = {k: v for k, v in params.items() if v is not None}
 
         # Backend connection settings retained for (possibly lazy) construction.
-        self._host = host
+        self._bind_host = bind_host
+        self._advertise_host = advertise_host
         self._port = port
         self._cwd = cwd
         self._connect_timeout = connect_timeout
@@ -141,7 +143,8 @@ class DFTFE(Calculator):
     # ── launch construction ────────────────────────────────────────────
     def _make_socket_backend(self, command):
         return SocketBackend(
-            command, host=self._host, port=self._port, env=self._env, cwd=self._cwd,
+            command, bind_host=self._bind_host, advertise_host=self._advertise_host,
+            port=self._port, env=self._env, cwd=self._cwd,
             connect_timeout=self._connect_timeout, log_file=self._log_file,
             verbosity=self.verbosity,
         )
