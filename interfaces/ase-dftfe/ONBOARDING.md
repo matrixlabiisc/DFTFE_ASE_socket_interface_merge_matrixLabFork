@@ -41,6 +41,14 @@ cluster — targets: **ALCF Polaris (CUDA) / Aurora (SYCL)**, **OLCF Frontier (H
   Dispersion Correction subsection added; `start_magnetization` maps to a **non-existent** DFT-FE key
   (initial magnetization = per-atom `m` column in coordinates.inp — a separate feature). Also: enabling
   smeared-charges/group-symmetry crashes tiny test systems (setup, not injection).
+- **Generic .prm injector (A + B) — DELIVERED & verified.** `params.py` is the single source of truth
+  (kwarg ↔ .prm key/subsection/type; generates `dev_help/parameter_mapping.md`). One mechanism, no
+  per-param sed: C++ `dftfeWrapper.setSocketPrmOverrides()` + a generic delete+append loop in reinit
+  (creates the subsection if missing); calculator routes **B** (full-Python "planned" kwargs) + **A**
+  (`extra_prm={...}` dict and `prm_file="…"` full-.prm passthrough) into one `{section,key,value}` list.
+  Fixed `mixing_history` mis-map (was LBFGS HISTORY → now MIXING HISTORY). 21 params two-value-tracked;
+  53/53 unit tests. `dispersion_correction_type` now works too (injector auto-creates the subsection);
+  only `start_magnetization` remains unsupported (per-atom `m` column, separate feature).
 - **`FileBackend`** (`backends/file.py`): native file-based DFT-FE as a Backend for apples-to-apples
   (same ASE optimizer, socket vs file), full per-atom force parsing, any system.
 - **Benchmark coverage** (dftfe-benchmarks accuracyBenchmarks: BCC Mo GS, Li2O ion-relax, Li2O NEB):
