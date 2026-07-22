@@ -80,7 +80,8 @@ namespace dftfe
     std::string
     format_response(double                                  energy,
                     const std::vector<std::vector<double>> &forces,
-                    const std::vector<std::vector<double>> &stress);
+                    const std::vector<std::vector<double>> &stress,
+                    double                                  compute_time = -1.0);
   };
 
 } // namespace dftfe

@@ -197,32 +197,40 @@ class DFTFE(Calculator):
                 stress = full_3x3_to_voigt_6_stress(stress)
             self.results["stress"] = stress
 
-        # Timing breakdown (like the legacy debug_timing): the socket round-trip
-        # (backend.last_wait_s) is DFT-FE compute + transport; the remainder is
-        # ASE-side Python (unit conversion, request build). Overhead is that
-        # remainder as a fraction of the whole call.
+        # Timing breakdown. The interface overhead in a multi-step workflow has
+        # TWO parts, both of which recur every step:
+        #   ase_overhead  = total - round_trip     (Python: unit conv, request build)
+        #   streaming     = round_trip - dft_compute  (serialize + send positions,
+        #                                               recv forces; MPI bcast; etc.)
+        # dft_compute (pure DFT-FE work) is reported by the C++ driver so it can
+        # be subtracted out. interface_overhead = ase_overhead + streaming.
         total = time.perf_counter() - t_start
-        wait = getattr(self.backend, "last_wait_s", None)
-        if wait is not None:
-            overhead = total - wait
+        round_trip = getattr(self.backend, "last_wait_s", None)
+        if round_trip is not None:
+            dft_compute = result.get("compute_time") if isinstance(result, dict) else None
+            ase_overhead = total - round_trip
+            streaming = (round_trip - dft_compute) if dft_compute is not None else None
+            interface = ase_overhead + (streaming or 0.0)
             self.timing = {
                 "total_s": total,
-                "dftfe_wait_s": wait,
-                "ase_overhead_s": overhead,
-                "ase_overhead_pct": 100.0 * overhead / total if total > 0 else 0.0,
+                "round_trip_s": round_trip,
+                "dft_compute_s": dft_compute,
+                "streaming_overhead_s": streaming,
+                "ase_overhead_s": ase_overhead,
+                "interface_overhead_s": interface,
+                "interface_overhead_pct": 100.0 * interface / total if total > 0 else 0.0,
             }
             if self.debug_timing:
-                log.info(
-                    "ASE-DFTFE timing: total=%.4fs  DFT-FE wait=%.4fs  "
-                    "ASE overhead=%.4fs (%.2f%%)",
-                    total, wait, overhead, self.timing["ase_overhead_pct"],
+                stream_str = f"{streaming:.4f}s" if streaming is not None else "n/a (old binary)"
+                dc_str = f"{dft_compute:.4f}s" if dft_compute is not None else "n/a"
+                msg = (
+                    f"[dftfe_ase debug_timing] total={total:.4f}s | "
+                    f"DFT compute={dc_str} | streaming={stream_str} | "
+                    f"ASE={ase_overhead:.4f}s | interface overhead="
+                    f"{interface:.4f}s ({self.timing['interface_overhead_pct']:.2f}%)"
                 )
-                print(
-                    f"[dftfe_ase debug_timing] total={total:.4f}s  "
-                    f"DFT-FE wait={wait:.4f}s  ASE overhead={overhead:.4f}s "
-                    f"({self.timing['ase_overhead_pct']:.2f}%)",
-                    flush=True,
-                )
+                log.info(msg)
+                print(msg, flush=True)
 
     def close(self) -> None:
         if getattr(self, "backend", None) is not None:

@@ -424,7 +424,8 @@ namespace dftfe
   std::string
   socketDriver::format_response(double                                  energy,
                                 const std::vector<std::vector<double>> &forces,
-                                const std::vector<std::vector<double>> &stress)
+                                const std::vector<std::vector<double>> &stress,
+                                double                                  compute_time)
   {
     std::stringstream ss;
     ss << std::scientific << std::setprecision(16);
@@ -444,7 +445,12 @@ namespace dftfe
         if (i < stress.size() - 1)
           ss << ",";
       }
-    ss << "]}";
+    ss << "]";
+    // Pure DFT-FE compute time (s) for this step, so the Python side can
+    // separate it from the socket streaming/serialization overhead.
+    if (compute_time >= 0.0)
+      ss << ", \"compute_time\": " << compute_time;
+    ss << "}";
     return ss.str();
   }
 
@@ -605,6 +611,11 @@ namespace dftfe
               std::cout << "socketDriver: Received exit command." << std::endl;
             break;
           }
+
+        // Start timing the pure DFT-FE work for this step (reinit/update +
+        // solve + force/stress fetch). Reported back so Python can separate
+        // compute from socket streaming/serialization overhead.
+        const double t_compute_start = MPI_Wtime();
 
         if (!initialized)
           {
@@ -833,7 +844,9 @@ namespace dftfe
         if (compute_stress)
           stress = dft.getCellStress();
 
-        std::string response = format_response(energy, forces, stress);
+        const double compute_time = MPI_Wtime() - t_compute_start;
+        std::string  response =
+          format_response(energy, forces, stress, compute_time);
         send_data(response);
         if (rank == 0)
           std::cout << "socketDriver: Response sent." << std::endl;

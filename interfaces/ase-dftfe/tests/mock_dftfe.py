@@ -78,6 +78,7 @@ def main():
             ]
         if req.get("compute_stress", False):
             resp["stress"] = [[0.01, 0.0, 0.0], [0.0, 0.02, 0.0], [0.0, 0.0, 0.03]]
+        resp["compute_time"] = 0.0  # mock does no real compute
         sock.sendall((json.dumps(resp) + "\n").encode())
 
     sock.close()
