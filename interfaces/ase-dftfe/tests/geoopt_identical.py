@@ -106,18 +106,22 @@ def n2():
 
 
 def relax(calc, tag):
+    import time
     atoms = n2()
     atoms.calc = calc
-    traj = []
+    traj, step_starts = [], []
     opt = BFGS(atoms, logfile=f"geoid_{tag}.log")
 
     def rec():
         traj.append(atoms.get_distance(0, 1) / Bohr)  # bond length, Bohr
+        step_starts.append(time.perf_counter())
 
     opt.attach(rec, interval=1)
+    t0 = time.perf_counter()
     opt.run(fmax=FMAX, steps=MAXSTEP)
     rec()
-    return np.array(traj), atoms.get_potential_energy() / Hartree
+    wall = time.perf_counter() - t0
+    return np.array(traj), atoms.get_potential_energy() / Hartree, wall
 
 
 def main():
@@ -133,22 +137,28 @@ def main():
                         max_scf_iterations=40, fermi_temp=500.0, num_bands=15,
                         compute_forces=True, verbosity=1, log_file="geoid_socket.log")
     with socket_calc:
-        t_sock, e_sock = relax(socket_calc, "socket")
-    t_file, e_file = relax(FileDFTFE(tmproot), "file")
+        t_sock, e_sock, wall_sock = relax(socket_calc, "socket")
+    t_file, e_file, wall_file = relax(FileDFTFE(tmproot), "file")
 
     n = min(len(t_sock), len(t_file))
     dtraj = np.abs(t_sock[:n] - t_file[:n])
-    print("\n=========== ex1_b identical-optimizer head-to-head ===========")
-    print(f"  socket: {len(t_sock)} BFGS steps, final bond = {t_sock[-1]:.8f} Bohr, E = {e_sock:.10e} Ha")
-    print(f"  file  : {len(t_file)} BFGS steps, final bond = {t_file[-1]:.8f} Bohr, E = {e_file:.10e} Ha")
-    print(f"  max per-step |d(bond)| over trajectory = {dtraj.max():.3e} Bohr")
-    print(f"  |d(final bond)| = {abs(t_sock[-1] - t_file[-1]):.3e} Bohr")
-    print(f"  |d(final E)|    = {abs(e_sock - e_file):.3e} Ha")
-    # identical optimizer + matching forces -> trajectories agree to ~SCF tol
-    ok = (len(t_sock) == len(t_file)) and dtraj.max() < 1e-4
-    print("=" * 62)
-    print(f"IDENTICAL-OPTIMIZER GEOOPT {'PASS' if ok else 'CHECK'} "
-          f"(step counts {'match' if len(t_sock)==len(t_file) else 'differ'})")
+    ns, nf = len(t_sock) - 1, len(t_file) - 1  # BFGS steps (traj has +1 for start)
+    print("\n=========== ex1_b identical-optimizer relaxation OVERHEAD ===========")
+    print("  (same ASE BFGS both sides; only the force transport differs)")
+    print(f"  socket: {ns} steps, final bond = {t_sock[-1]:.8f} Bohr, E = {e_sock:.10e} Ha")
+    print(f"  file  : {nf} steps, final bond = {t_file[-1]:.8f} Bohr, E = {e_file:.10e} Ha")
+    print(f"  trajectory agreement: max per-step |d(bond)| = {dtraj.max():.3e} Bohr "
+          f"(step counts {'match' if ns == nf else 'DIFFER'})")
+    print("  --- wall time (the overhead result) ---")
+    print(f"  socket : {wall_sock:8.2f} s total,  {wall_sock / max(ns,1):7.2f} s/step "
+          "(persistent process, warm-started)")
+    print(f"  file   : {wall_file:8.2f} s total,  {wall_file / max(nf,1):7.2f} s/step "
+          "(cold restart every step)")
+    print(f"  socket speedup over file-based multi-step workflow: {wall_file / wall_sock:.2f}x")
+    print("=" * 68)
+    ok = (ns == nf) and dtraj.max() < 1e-4
+    print(f"IDENTICAL-OPTIMIZER RELAXATION {'consistent' if ok else 'CHECK'} "
+          "(overhead numbers above)")
     sys.exit(0 if ok else 1)
 
 
