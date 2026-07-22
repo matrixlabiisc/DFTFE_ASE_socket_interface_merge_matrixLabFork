@@ -779,8 +779,14 @@ namespace dftfe
             }
 
             if (mixingScheme != "Unprovided") {
-              cmd = "sed -i 's/set MIXING METHOD.*/set MIXING METHOD=" +
-                    mixingScheme + "/g' " + parameter_file_path;
+              // A plain 's/set MIXING METHOD.*/.../' is a silent no-op when the
+              // template has no MIXING METHOD line (the default), which drops the
+              // value. Delete any existing line, then append under the SCF
+              // parameters subsection so it always takes effect.
+              cmd = "sed -i '/set MIXING METHOD/d' " + parameter_file_path;
+              system(cmd.c_str());
+              cmd = "sed -i '/subsection SCF parameters/a\\    set MIXING METHOD=" +
+                    mixingScheme + "' " + parameter_file_path;
               system(cmd.c_str());
             }
 
