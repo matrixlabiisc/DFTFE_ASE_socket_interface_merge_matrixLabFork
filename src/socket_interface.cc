@@ -824,8 +824,14 @@ namespace dftfe
           std::cout << "socketDriver: Computation complete." << std::endl;
 
         double energy = std::get<0>(result);
-        auto   forces = dft.getForcesAtoms();
-        auto   stress = dft.getCellStress();
+        // Only fetch what was actually computed. Calling getCellStress()/
+        // getForcesAtoms() when the corresponding quantity was not computed
+        // reads uninitialized data and can segfault (e.g. energy-only runs).
+        std::vector<std::vector<double>> forces, stress;
+        if (compute_forces)
+          forces = dft.getForcesAtoms();
+        if (compute_stress)
+          stress = dft.getCellStress();
 
         std::string response = format_response(energy, forces, stress);
         send_data(response);

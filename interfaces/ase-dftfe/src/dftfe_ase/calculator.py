@@ -22,6 +22,7 @@ Launch is zero-config where possible. In order of preference:
 from __future__ import annotations
 
 import logging
+import time
 
 import numpy as np
 from ase.calculators.calculator import Calculator, all_changes
@@ -79,6 +80,7 @@ class DFTFE(Calculator):
         connect_timeout: float = 120.0,
         log_file: str = "dftfe.log",
         verbosity: int | None = None,
+        debug_timing: bool = False,
         **params,
     ):
         super().__init__()
@@ -86,6 +88,8 @@ class DFTFE(Calculator):
         self.compute_stress = compute_stress
         self.use_device = use_device
         self.verbosity = verbosity
+        self.debug_timing = debug_timing
+        self.timing = None  # dict of the last call's timing breakdown
 
         # Pseudopotential encoding: dict -> "DICT|El:path|..." ; else path/string.
         if isinstance(psp_path, dict):
@@ -164,6 +168,7 @@ class DFTFE(Calculator):
     def calculate(self, atoms=None, properties=("energy",), system_changes=all_changes):
         super().calculate(atoms, properties, system_changes)
         self._ensure_backend(self.atoms)
+        t_start = time.perf_counter()
         want_stress = self.compute_stress or ("stress" in properties)
 
         request = {
@@ -191,6 +196,33 @@ class DFTFE(Calculator):
             if stress.shape == (3, 3):
                 stress = full_3x3_to_voigt_6_stress(stress)
             self.results["stress"] = stress
+
+        # Timing breakdown (like the legacy debug_timing): the socket round-trip
+        # (backend.last_wait_s) is DFT-FE compute + transport; the remainder is
+        # ASE-side Python (unit conversion, request build). Overhead is that
+        # remainder as a fraction of the whole call.
+        total = time.perf_counter() - t_start
+        wait = getattr(self.backend, "last_wait_s", None)
+        if wait is not None:
+            overhead = total - wait
+            self.timing = {
+                "total_s": total,
+                "dftfe_wait_s": wait,
+                "ase_overhead_s": overhead,
+                "ase_overhead_pct": 100.0 * overhead / total if total > 0 else 0.0,
+            }
+            if self.debug_timing:
+                log.info(
+                    "ASE-DFTFE timing: total=%.4fs  DFT-FE wait=%.4fs  "
+                    "ASE overhead=%.4fs (%.2f%%)",
+                    total, wait, overhead, self.timing["ase_overhead_pct"],
+                )
+                print(
+                    f"[dftfe_ase debug_timing] total={total:.4f}s  "
+                    f"DFT-FE wait={wait:.4f}s  ASE overhead={overhead:.4f}s "
+                    f"({self.timing['ase_overhead_pct']:.2f}%)",
+                    flush=True,
+                )
 
     def close(self) -> None:
         if getattr(self, "backend", None) is not None:
