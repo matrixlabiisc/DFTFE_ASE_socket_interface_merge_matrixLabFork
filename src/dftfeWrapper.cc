@@ -844,25 +844,31 @@ namespace dftfe
             }
 
             if (orthogonalizationType != "Unprovided") {
-              cmd =
-                "sed -i 's/set ORTHOGONALIZATION TYPE.*/set ORTHOGONALIZATION TYPE = " +
-                orthogonalizationType + "/g' " + parameter_file_path;
+              // delete-any + append under its subsection (replace-only silently
+              // drops when the template lacks the key).
+              cmd = "sed -i '/set ORTHOGONALIZATION TYPE/d' " + parameter_file_path;
+              system(cmd.c_str());
+              cmd = "sed -i '/subsection Eigen-solver parameters/a\\    set ORTHOGONALIZATION TYPE = " +
+                    orthogonalizationType + "' " + parameter_file_path;
               system(cmd.c_str());
             }
 
             if (smearedNuclearCharges != -1) {
               const std::string smeared =
                 smearedNuclearCharges ? "true" : "false";
-              cmd =
-                "sed -i 's/set SMEARED NUCLEAR CHARGES.*/set SMEARED NUCLEAR CHARGES=" +
-                smeared + "/g' " + parameter_file_path;
+              cmd = "sed -i '/set SMEARED NUCLEAR CHARGES/d' " + parameter_file_path;
+              system(cmd.c_str());
+              cmd = "sed -i '/subsection Boundary conditions/a\\  set SMEARED NUCLEAR CHARGES=" +
+                    smeared + "' " + parameter_file_path;
               system(cmd.c_str());
             }
 
             if (useGroupSymmetry != -1) {
               const std::string groupSym = useGroupSymmetry ? "true" : "false";
-              cmd = "sed -i 's/set USE GROUP SYMMETRY.*/set USE GROUP SYMMETRY=" +
-                    groupSym + "/g' " + parameter_file_path;
+              cmd = "sed -i '/set USE GROUP SYMMETRY/d' " + parameter_file_path;
+              system(cmd.c_str());
+              cmd = "sed -i '/subsection Brillouin zone k point sampling options/a\\  set USE GROUP SYMMETRY=" +
+                    groupSym + "' " + parameter_file_path;
               system(cmd.c_str());
             }
 
@@ -876,8 +882,10 @@ namespace dftfe
             }
 
             if (mixingHistory != -1) {
-              cmd = "sed -i 's/set LBFGS HISTORY.*/set LBFGS HISTORY=" +
-                    std::to_string(mixingHistory) + "/g' " + parameter_file_path;
+              cmd = "sed -i '/set LBFGS HISTORY/d' " + parameter_file_path;
+              system(cmd.c_str());
+              cmd = "sed -i '/subsection Optimization/a\\    set LBFGS HISTORY=" +
+                    std::to_string(mixingHistory) + "' " + parameter_file_path;
               system(cmd.c_str());
             }
 

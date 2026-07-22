@@ -49,7 +49,16 @@ CHECKS = {
     "use_time_reversal_symmetry":  (r"USE TIME REVERSAL SYMMETRY", "true", False),
     "mp_grid":                     (r"SAMPLING POINTS 1", 2, True),
     "mp_grid_shift":               (r"SAMPLING SHIFT 1", 1, True),
+    "npkpt":                       (r"\bNPKPT\b", 2, True),
+    "orthogonalization_type":      (r"ORTHOGONALIZATION TYPE", "CGS", False),
+    "smeared_nuclear_charges":     (r"SMEARED NUCLEAR CHARGES", "true", False),
+    "use_group_symmetry":          (r"USE GROUP SYMMETRY", "true", False),
+    "mixing_history":              (r"LBFGS HISTORY", 8, True),
 }
+# Known gaps (deliberately NOT injected): dispersion_correction_type needs a
+# Dispersion Correction subsection added; start_magnetization maps to a
+# non-existent DFT-FE key (initial magnetization is the per-atom m column in
+# coordinates.inp). Tracked for follow-up.
 
 PARAMS = dict(
     xc="GGA-PBE", polynomial_order=5, mesh_size=1.7, atom_ball_radius=4.0,
@@ -57,7 +66,8 @@ PARAMS = dict(
     mixing_scheme="ANDERSON_WITH_KERKER", num_bands=26, max_scf_iterations=33,
     density_quadrature_rule=10, use_single_prec_cheby=True,
     use_time_reversal_symmetry=True, mp_grid=(2, 2, 2), mp_grid_shift=(1, 1, 1),
-    npkpt=2,
+    npkpt=2, orthogonalization_type="CGS", smeared_nuclear_charges=1,
+    use_group_symmetry=1, mixing_history=8,
 )
 
 
