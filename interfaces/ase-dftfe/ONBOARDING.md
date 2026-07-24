@@ -53,8 +53,17 @@ cluster — targets: **ALCF Polaris (CUDA) / Aurora (SYCL)**, **OLCF Frontier (H
   (same ASE optimizer, socket vs file), full per-atom force parsing, any system.
 - **Benchmark coverage** (dftfe-benchmarks accuracyBenchmarks: BCC Mo GS, Li2O ion-relax, Li2O NEB):
   all DFT-FE params map to the interface (density_quadrature_rule + use_single_prec_cheby, added this
-  session, are used by Li2O). NEB subsection is ASE-side (ase.mep.NEB). Verify meta-GGA MGGA-R2SCAN
-  support + multi-element psp dict before Li2O runs.
+  session, are used by Li2O). NEB subsection is ASE-side (ase.mep.NEB).
+- **MGGA-R2SCAN verified** (`tests/mgga_check.py`, N2 = -20.7514 Ha). Limitation: MGGA + ION FORCE +
+  **NLCC** pseudos is unimplemented in DFT-FE (assertion `src/dft/dft.cc:969`) — energy is fine, and
+  NLCC-free pseudos (e.g. Li2O's ONCV, `core_correction="F"`) compute forces fine.
+- **Li2O SCF accuracy — PASS, bit-for-bit** (`tests/li2o_scf_accuracy.py`, `run_li2o_scf.slurm`, 8 GPU):
+  95-atom vacancy supercell (64 Li + 31 O), MGGA-R2SCAN, 2x2x2 MP grid + shift + TRS, poly 7,
+  density quad 10, mesh 1.2/ball 6, tol 1e-6, ANDERSON 0.7, single-prec cheby — **all via pure-Python
+  kwargs (option B)** + multi-element ONCV psp **dict**. Converged in 19 SCF iters.
+  ASE socket = -9.565888847486111e+02 Ha vs native ref -9.565888847486106e+02 Ha,
+  **|dE| = 5.68e-13 Ha**. Confirms option B (full param set) + multi-element psp dict end-to-end on a
+  real benchmark. (Remaining accuracy benchmarks: BCC Mo GS, Li2O ion-relax, Li2O NEB.)
 
 ## Reviewer-grade gaps still open (before publishing overhead / porting)
 - Overhead needs a **native-MD head-to-head** (compare total time + mean SCF iters/step; the socket path
