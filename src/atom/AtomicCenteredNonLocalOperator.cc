@@ -468,10 +468,14 @@ namespace dftfe
           projectorMatrices;
         dftfe::uInt kptBatch               = 1;
         dftfe::uInt projectorMatrixSizeOld = 0;
-#if defined(DFTFE_WITH_DEVICE)
-        dftfe::utils::MemoryStorage<dataTypes::number, memorySpace>
-          sphericalFunctionBasisTimesJxW,
-          sphericalFunctionBasisWithDistanceTimesJxW;
+        // projector*MatricesHost accumulate the projector matrices for all
+        // maxkPoints k-points: the CMatrix/DMatrix fill loop below indexes them
+        // as kPoint * NumTotalSphericalFunctions * d_numberNodesPerElement *
+        // nCellsPerBatch + ..., so they must be sized m * n, where n already
+        // carries the maxkPoints factor. They therefore cannot alias the
+        // projector*Matrices buffers, which are resized per k-point batch --
+        // on a CPU-only build that aliasing left them maxkPoints times too
+        // small and the fill loop read past the end of the allocation.
         dftfe::utils::MemoryStorage<dataTypes::number,
                                     dftfe::utils::MemorySpace::HOST>
           projectorTimesXMatricesHost, gradientProjectorDyadicXMatricesHost,
@@ -486,6 +490,10 @@ namespace dftfe
         if (d_computeIonForces)
           gradientProjectorMatricesHost.resize(3 * m * n, 0.0);
 
+#if defined(DFTFE_WITH_DEVICE)
+        dftfe::utils::MemoryStorage<dataTypes::number, memorySpace>
+          sphericalFunctionBasisTimesJxW,
+          sphericalFunctionBasisWithDistanceTimesJxW;
         // sphericalFunctionBasisTimesJxW(WithDistance) are separate
         // device-resident staging buffers here, refilled per k-point batch
         // via copyFrom from the full *Host buffers below, so they are sized
@@ -505,11 +513,6 @@ namespace dftfe
           sphericalFunctionBasisTimesJxWHost;
         auto &sphericalFunctionBasisWithDistanceTimesJxW =
           sphericalFunctionBasisWithDistanceTimesJxWHost;
-        auto &projectorMatricesHost         = projectorMatrices;
-        auto &projectorTimesXMatricesHost   = projectorTimesXMatrices;
-        auto &gradientProjectorMatricesHost = gradientProjectorMatrices;
-        auto &gradientProjectorDyadicXMatricesHost =
-          gradientProjectorDyadicXMatrices;
         // sphericalFunctionBasisTimesJxW(WithDistance) alias the *Host
         // buffers here, which are already sized to hold all maxkPoints'
         // worth of data (see their construction above) — do NOT resize them
@@ -872,7 +875,10 @@ namespace dftfe
                     dftfe::uInt dstOffset = iKpt * nCellsPerBatch *
                                             NumTotalSphericalFunctions *
                                             d_numberNodesPerElement;
-#if defined(DFTFE_WITH_DEVICE)
+                    // Needed on both builds: projector*MatricesHost are no
+                    // longer aliases of projector*Matrices on CPU, so the
+                    // per-k-point-batch results have to be accumulated here for
+                    // the k-point-indexed fill loop below to find them.
                     projectorMatricesHost.copyFrom(projectorMatrices,
                                                    projectorMatrixSize,
                                                    0,
@@ -899,7 +905,6 @@ namespace dftfe
                           0,
                           9 * dstOffset);
                       }
-#endif
                   }
               }
 
