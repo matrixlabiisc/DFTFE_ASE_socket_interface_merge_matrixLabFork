@@ -288,9 +288,22 @@ class DFTFE(Calculator):
         t_start = time.perf_counter()
         want_stress = self.compute_stress or ("stress" in properties)
 
+        # For periodic directions, wrap Cartesian positions into the unit cell
+        # before sending to DFT-FE. ASE optimizers (NEB, LBFGS, …) can push
+        # atoms outside the cell; DFT-FE's reinit() asserts fractional coords
+        # lie in [0, 1] and will crash otherwise.
+        positions = self.atoms.get_positions()
+        if any(self.atoms.get_pbc()):
+            scaled = self.atoms.get_scaled_positions(wrap=False)
+            pbc = self.atoms.get_pbc()
+            for dim in range(3):
+                if pbc[dim]:
+                    scaled[:, dim] %= 1.0
+            positions = scaled @ self.atoms.get_cell()[:]
+
         request = {
             "cmd": "run",
-            "coords": (self.atoms.get_positions() / Bohr).tolist(),
+            "coords": (positions / Bohr).tolist(),
             "cell": (self.atoms.get_cell()[:] / Bohr).tolist(),
             "numbers": self.atoms.get_atomic_numbers().tolist(),
             "pbc": self.atoms.get_pbc().tolist(),
