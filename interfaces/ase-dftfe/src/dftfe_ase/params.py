@@ -36,6 +36,9 @@ PAR = "Parallelization"
 OPT = "Optimization"
 DISP = "Dispersion Correction"
 HUB = "Hubbard Parameters"
+GPU = "GPU"
+POISSON = "Poisson problem parameters"
+HELMHOLTZ = "Helmholtz problem parameters"
 
 
 @dataclass(frozen=True)
@@ -88,7 +91,82 @@ PARAM_TABLE = [
     ParamSpec("hubbard_parameters_file",    "HUBBARD PARAMETERS FILE",              HUB,      "str",   "planned", "DFT+U"),
     ParamSpec("kpoint_rule_file",           "kPOINT RULE FILE",                     BZ,       "str",   "planned"),
     ParamSpec("dispersion_correction_type", "DISPERSION CORRECTION TYPE",           DISP,     "int",   "planned", "needs Dispersion Correction subsection added"),
+    # ── performance / solver knobs used by the published scaling decks ──────
+    # These are what a Summit-style benchmark .prm tunes. Before they were added
+    # here the only way to set them was extra_prm/prm_file, so a scaling study
+    # could not be expressed in pure Python (option B).
+    ParamSpec("auto_gpu_block_sizes",       "AUTO GPU BLOCK SIZES",                 GPU,      "bool",  "planned", "false = honour the explicit block sizes below"),
+    ParamSpec("fine_grained_gpu_timings",   "FINE GRAINED GPU TIMINGS",             GPU,      "bool",  "planned"),
+    ParamSpec("subspace_rot_full_cpu_mem",  "SUBSPACE ROT FULL CPU MEM",            GPU,      "bool",  "planned"),
+    ParamSpec("use_gpudirect_mpi_allreduce","USE GPUDIRECT MPI ALL REDUCE",         GPU,      "bool",  "planned"),
+    ParamSpec("use_dccl",                   "USE DCCL",                             GPU,      "bool",  "planned"),
+    ParamSpec("use_elpa_gpu_kernel",        "USE ELPA GPU KERNEL",                  GPU,      "bool",  "planned"),
+    ParamSpec("self_potential_radius",      "SELF POTENTIAL RADIUS",                BC,       "float", "planned"),
+    ParamSpec("polynomial_order_electrostatics", "POLYNOMIAL ORDER ELECTROSTATICS", FE,       "int",   "planned"),
+    ParamSpec("poisson_tolerance",          "TOLERANCE",                            POISSON,  "float", "planned", "distinct from `tolerance` (SCF); same key, different subsection"),
+    ParamSpec("poisson_max_iterations",     "MAXIMUM ITERATIONS",                   POISSON,  "int",   "planned", "distinct from `max_scf_iterations` (SCF)"),
+    ParamSpec("helmholtz_tolerance",        "ABSOLUTE TOLERANCE HELMHOLTZ",         HELMHOLTZ,"float", "planned"),
+    ParamSpec("helmholtz_max_iterations",   "MAXIMUM ITERATIONS HELMHOLTZ",         HELMHOLTZ,"int",   "planned"),
+    ParamSpec("kerker_mixing_parameter",    "KERKER MIXING PARAMETER",              SCF,      "float", "planned"),
+    ParamSpec("compute_energy_each_iter",   "COMPUTE ENERGY EACH ITER",             SCF,      "bool",  "planned"),
+    ParamSpec("cheby_degree_scaling_first_scf", "CHEBYSHEV POLYNOMIAL DEGREE SCALING FACTOR FIRST SCF", EIG, "float", "planned"),
+    ParamSpec("subspace_rot_dofs_block_size", "SUBSPACE ROT DOFS BLOCK SIZE",       EIG,      "int",   "planned"),
+    ParamSpec("scalapack_procs",            "SCALAPACKPROCS",                       EIG,      "int",   "planned", "0 = auto; tuned per rank count in scaling decks"),
+    ParamSpec("scalapack_block_size",       "SCALAPACK BLOCK SIZE",                 EIG,      "int",   "planned"),
+    ParamSpec("reuse_lanczos_upper_bound",  "REUSE LANCZOS UPPER BOUND",            EIG,      "bool",  "planned"),
+    ParamSpec("allow_multiple_passes_post_first_scf", "ALLOW MULTIPLE PASSES POST FIRST SCF", EIG, "bool", "planned"),
+    ParamSpec("use_mixed_prec_cgs_sr",      "USE MIXED PREC CGS SR",                EIG,      "bool",  "planned"),
+    ParamSpec("use_mixed_prec_xtox",        "USE MIXED PREC XTOX",                  EIG,      "bool",  "planned", "v1.0 decks: USE MIXED PREC CGS O"),
+    ParamSpec("use_mixed_prec_xthx",        "USE MIXED PREC XTHX",                  EIG,      "bool",  "planned", "v1.0 decks: USE MIXED PREC XTHX SPECTRUM SPLIT"),
+    ParamSpec("use_mixed_prec_rr_sr",       "USE MIXED PREC RR_SR",                 EIG,      "bool",  "planned"),
+    ParamSpec("use_mixed_prec_commun_only_xtox_xthx", "USE MIXED PREC COMMUN ONLY XTOX XTHX", EIG, "bool", "planned"),
+    ParamSpec("num_core_eigenstates_mixed_prec_rr", "NUMBER OF CORE EIGEN STATES FOR MIXED PREC RR", EIG, "int", "planned"),
+    ParamSpec("npband",                     "NPBAND",                               PAR,      "int",   "planned"),
+    ParamSpec("band_paral_opt",             "BAND PARAL OPT",                       PAR,      "bool",  "planned"),
 ]
+
+
+# ── DFT-FE v1.0 -> current key migration ────────────────────────────────────
+# Published benchmark decks (Summit/Frontier, DFT-FE v1.0) use key spellings
+# that were later renamed or removed. deal.II parses with skip_undefined=true,
+# so a stale key is silently ignored: the run succeeds and quietly uses a
+# different algorithm. Reading a deck therefore rewrites what can be rewritten
+# and *warns* about the rest rather than dropping it on the floor.
+#
+# (section, key) -> (section, key) | None  [None = removed from DFT-FE]
+LEGACY_KEYS: dict[tuple[str, str], Optional[tuple[str, str]]] = {
+    (EIG, "USE MIXED PREC CHEBY"):                (EIG, "USE SINGLE PREC CHEBY"),
+    (EIG, "USE MIXED PREC CGS O"):                (EIG, "USE MIXED PREC XTOX"),
+    (EIG, "USE MIXED PREC XTHX SPECTRUM SPLIT"):  (EIG, "USE MIXED PREC XTHX"),
+    (EIG, "SPECTRUM SPLIT CORE EIGENSTATES"):     None,  # spectrum splitting removed
+}
+
+# Entries owned by the *driver*, not by dftParameters. These are declared in
+# utils/runParameters.cc and consumed by the native file-based executable before
+# dftParameters is even parsed; in socket mode the calculator decides them
+# (`use_device=`, always solver mode GS, no restart files). Injecting them would
+# at best be a no-op warning and at worst fight the calculator, so they are
+# dropped from a deck in whichever subsection they appear -- v1.0 put USE GPU
+# inside `subsection GPU`, current decks put it at top level.
+DRIVER_OWNED_KEYS = frozenset({
+    "USE GPU",
+    "SOLVER MODE",
+    "RESTART",
+    "RESTART FOLDER",
+})
+
+# Geometry and pseudopotential paths are owned by the calculator: the atoms come
+# from the ASE Atoms object and the driver writes coordinates.inp /
+# domainVectors.inp / pseudo.inp into its scratch folder. A deck that also sets
+# them would point DFT-FE back at its own files and silently ignore everything
+# ASE sent, so these keys are never injected.
+GEOMETRY_KEYS = frozenset({
+    "NATOMS",
+    "NATOM TYPES",
+    "ATOMIC COORDINATES FILE",
+    "DOMAIN VECTORS FILE",
+    "PSEUDOPOTENTIAL FILE NAMES LIST",
+})
 # fmt: on
 
 BY_KWARG = {p.kwarg: p for p in PARAM_TABLE}
@@ -107,11 +185,15 @@ def to_prm_entries(kwargs: dict) -> list[dict]:
         if v is None or k not in BY_KWARG:
             continue
         spec = BY_KWARG[k]
+        # Normalise top-level to "" (not None) so entries built from kwargs
+        # compare equal to entries parsed out of a .prm, and so the C++ side
+        # sees one spelling for "no subsection".
+        section = spec.section or ""
         if spec.dtype in ("int3", "float3"):  # SAMPLING POINTS 1/2/3 etc.
             for i, comp in enumerate(v, start=1):
-                entries.append({"section": spec.section, "key": f"{spec.prm_key} {i}", "value": comp})
+                entries.append({"section": section, "key": f"{spec.prm_key} {i}", "value": comp})
         else:
-            entries.append({"section": spec.section, "key": spec.prm_key,
+            entries.append({"section": section, "key": spec.prm_key,
                             "value": format_value(spec.dtype, v)})
     return entries
 

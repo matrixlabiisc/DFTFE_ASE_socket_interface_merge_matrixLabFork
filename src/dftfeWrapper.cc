@@ -70,6 +70,110 @@ namespace dftfe
     }
 
 
+    /**
+     * @brief Minimal in-memory editor for deal.II .prm files (Mehul).
+     *
+     * .prm files are line oriented and *nested*: "subsection <name>" / "end"
+     * open and close scopes, "set <key> = <value>" assigns within the current
+     * scope. Editing them with `sed` cannot see that structure, which produced
+     * two silent-corruption modes in socket mode:
+     *
+     *   - a key declared in more than one subsection could not be targeted --
+     *     "TOLERANCE" lives in both "SCF parameters" (1e-4) and "Poisson problem
+     *     parameters" (1e-8), so writing one deleted the other;
+     *   - a substring pattern matched longer keys -- "set MAXIMUM ITERATIONS "
+     *     also matched "set MAXIMUM ITERATIONS HELMHOLTZ".
+     *
+     * In both cases the lost entry fell back to its built-in default with no
+     * diagnostic, because dftParameters::parse_parameters runs deal.II's parser
+     * with skip_undefined=true. This class tracks the subsection stack so every
+     * assignment resolves to exactly one entry, and reports when it does not.
+     */
+    class PrmFile
+    {
+    public:
+      explicit PrmFile(const std::string &path)
+      {
+        std::ifstream in(path);
+        std::string   line;
+        while (std::getline(in, line))
+          d_lines.push_back(line);
+      }
+
+      /**
+       * Assign @p key inside @p section, where @p section is the *innermost*
+       * subsection name ("" for a top-level entry). Returns false if the entry
+       * is not present in the template, in which case nothing is written.
+       */
+      bool
+      set(const std::string &section,
+          const std::string &key,
+          const std::string &value)
+      {
+        std::vector<std::string> stack;
+        for (auto &line : d_lines)
+          {
+            const std::string s = trim(line);
+            if (s.rfind("subsection", 0) == 0)
+              {
+                stack.push_back(trim(s.substr(std::string("subsection").size())));
+                continue;
+              }
+            if (s == "end")
+              {
+                if (!stack.empty())
+                  stack.pop_back();
+                continue;
+              }
+            if (s.rfind("set", 0) != 0)
+              continue;
+
+            const std::size_t eq = s.find('=');
+            if (eq == std::string::npos)
+              continue;
+            if (trim(s.substr(3, eq - 3)) != key)
+              continue;
+
+            const std::string here = stack.empty() ? "" : stack.back();
+            if (here != section)
+              continue;
+
+            line = line.substr(0, line.find_first_not_of(" \t")) + "set " + key +
+                   "=" + value;
+            return true;
+          }
+        return false;
+      }
+
+      /** Convenience overload for top-level entries. */
+      bool
+      set(const std::string &key, const std::string &value)
+      {
+        return set("", key, value);
+      }
+
+      void
+      write(const std::string &path) const
+      {
+        std::ofstream out(path);
+        for (const auto &line : d_lines)
+          out << line << "\n";
+      }
+
+    private:
+      static std::string
+      trim(const std::string &s)
+      {
+        const std::size_t b = s.find_first_not_of(" \t\r\n");
+        if (b == std::string::npos)
+          return "";
+        return s.substr(b, s.find_last_not_of(" \t\r\n") - b + 1);
+      }
+
+      std::vector<std::string> d_lines;
+    };
+
+
     template <dftfe::utils::MemorySpace memory>
     void
     create_dftfe(const MPI_Comm       &mpi_comm_parent,
@@ -625,393 +729,260 @@ namespace dftfe
             std::string sourceFilePath =
               dftfePath + "/helpers/parameterFile.prm";
 
-            std::string cmd;
+            // Mehul: the template is generated from dftParameters.cc
+            // declare_parameters() (see helpers/gen_parameter_template.py), so
+            // every declared key is already present at its DFT-FE default with
+            // the correct nesting. Injection below only ever REPLACES an entry;
+            // a false return means the key does not exist in this build, which
+            // is reported rather than silently dropped.
+            internalWrapper::PrmFile prm(sourceFilePath);
 
-            cmd = std::string("cp '") + sourceFilePath + "' '" +
-                  parameter_file_path + "'";
-            system(cmd.c_str());
-
-            // Mehul: Added sed commands to update parameter file with explicit
-            // values
-
-            cmd = "sed -i 's/set NATOMS=.*/set NATOMS=" +
-                  std::to_string(atomicPositionsCart.size()) + "/g' " +
-                  parameter_file_path;
-            system(cmd.c_str());
-
-            cmd = "sed -i 's/set NATOM TYPES=.*/set NATOM TYPES=" +
-                  std::to_string(atomicNumbersUniqueVec.size()) + "/g' " +
-                  parameter_file_path;
-            system(cmd.c_str());
-
-            const std::string dftfeCoordsFileNameForSed =
-              d_scratchFolderName + "\\\/coordinates.inp";
-            cmd =
-              "sed -i 's/set ATOMIC COORDINATES FILE=.*/set ATOMIC COORDINATES FILE=" +
-              dftfeCoordsFileNameForSed + "/g' " + parameter_file_path;
-            system(cmd.c_str());
-
-            const std::string dftfeCellFileNameForSed =
-              d_scratchFolderName + "\\\/domainVectors.inp";
-            cmd =
-              "sed -i 's/set DOMAIN VECTORS FILE=.*/set DOMAIN VECTORS FILE=" +
-              dftfeCellFileNameForSed + "/g' " + parameter_file_path;
-            system(cmd.c_str());
-
-            const std::string dftfePseudoFileNameForSed =
-              d_scratchFolderName + "\\\/pseudo.inp";
-            cmd =
-              "sed -i 's/set PSEUDOPOTENTIAL FILE NAMES LIST=.*/set PSEUDOPOTENTIAL FILE NAMES LIST=" +
-              dftfePseudoFileNameForSed + "/g' " + parameter_file_path;
-            system(cmd.c_str());
-
-            if (pbc.size() >= 3) {
-              const std::string option = (pbc[0] || pbc[1] || pbc[2]) ? "true" : "false";
-              // We only override CELL STRESS if all PBCs are false (it must be false)
-              if (pbc[0] == false && pbc[1] == false && pbc[2] == false)
-                {
-                  cmd = "sed -i 's/set CELL STRESS=.*/set CELL STRESS=false/g' " + parameter_file_path;
-                  system(cmd.c_str());
-                }
-
-              const std::string pbc1 = pbc[0] ? "true" : "false";
-              cmd = "sed -i 's/set PERIODIC1=.*/set PERIODIC1=" + pbc1 + "/g' " +
-                    parameter_file_path;
-              system(cmd.c_str());
-
-              const std::string pbc2 = pbc[1] ? "true" : "false";
-              cmd = "sed -i 's/set PERIODIC2=.*/set PERIODIC2=" + pbc2 + "/g' " +
-                    parameter_file_path;
-              system(cmd.c_str());
-
-              const std::string pbc3 = pbc[2] ? "true" : "false";
-              cmd = "sed -i 's/set PERIODIC3=.*/set PERIODIC3=" + pbc3 + "/g' " +
-                    parameter_file_path;
-              system(cmd.c_str());
-            }
-
-            if (mpGrid.size() >= 3) {
-              cmd = "sed -i 's/set SAMPLING POINTS 1=.*/set SAMPLING POINTS 1=" +
-                    std::to_string(mpGrid[0]) + "/g' " + parameter_file_path;
-              system(cmd.c_str());
-
-              cmd = "sed -i 's/set SAMPLING POINTS 2=.*/set SAMPLING POINTS 2=" +
-                    std::to_string(mpGrid[1]) + "/g' " + parameter_file_path;
-              system(cmd.c_str());
-
-              cmd = "sed -i 's/set SAMPLING POINTS 3=.*/set SAMPLING POINTS 3=" +
-                    std::to_string(mpGrid[2]) + "/g' " + parameter_file_path;
-              system(cmd.c_str());
-            }
-
-            if (mpGridShift.size() >= 3) {
-              cmd = "sed -i 's/set SAMPLING SHIFT 1=.*/set SAMPLING SHIFT 1=" +
-                    std::to_string(mpGridShift[0]) + "/g' " +
-                    parameter_file_path;
-              system(cmd.c_str());
-
-              cmd = "sed -i 's/set SAMPLING SHIFT 2=.*/set SAMPLING SHIFT 2=" +
-                    std::to_string(mpGridShift[1]) + "/g' " +
-                    parameter_file_path;
-              system(cmd.c_str());
-
-              cmd = "sed -i 's/set SAMPLING SHIFT 3=.*/set SAMPLING SHIFT 3=" +
-                    std::to_string(mpGridShift[2]) + "/g' " +
-                    parameter_file_path;
-              system(cmd.c_str());
-            }
-
-            if (spinPolarizedDFT != -1) {
-              cmd = "sed -i 's/set SPIN POLARIZATION.*/set SPIN POLARIZATION=" +
-                    std::to_string(spinPolarizedDFT) + "/g' " + parameter_file_path;
-              system(cmd.c_str());
-            }
-
-            if (startMagnetization != -1.0) {
-              cmd =
-                "sed -i 's/set TOTAL MAGNETIZATION.*/set TOTAL MAGNETIZATION=" +
-                std::to_string(startMagnetization * 2 *
-                               atomicNumbersUniqueVec.size()) +
-                "/g' " +
-                parameter_file_path;
-              system(cmd.c_str());
-
-              cmd =
-                "sed -i 's/set START MAGNETIZATION.*/set START MAGNETIZATION=" +
-                std::to_string(startMagnetization) + "/g' " + parameter_file_path;
-              system(cmd.c_str());
-            }
-
-            if (polynomialOrder != -1) {
-              cmd = "sed -i 's/set POLYNOMIAL ORDER.*/set POLYNOMIAL ORDER=" +
-                    std::to_string(polynomialOrder) + "/g' " +
-                    parameter_file_path;
-              system(cmd.c_str());
-            }
-
-            if (tolerance != -1.0) {
-              std::ostringstream oss;
-              oss << std::scientific << std::setprecision(13) << tolerance;
-              cmd = "sed -i 's/set TOLERANCE.*/set TOLERANCE=" +
-                    oss.str() + "/g' " + parameter_file_path;
-              system(cmd.c_str());
-            }
-
-            if (xc != "Unprovided") {
-              cmd =
-                "sed -i 's/set EXCHANGE CORRELATION TYPE.*/set EXCHANGE CORRELATION TYPE=" +
-                xc + "/g' " + parameter_file_path;
-              system(cmd.c_str());
-            }
-
-            if (fermiDiracSmearingTemp != -1.0) {
-              cmd = "sed -i 's/set TEMPERATURE.*/set TEMPERATURE=" +
-                    std::to_string(fermiDiracSmearingTemp) + "/g' " +
-                    parameter_file_path;
-              system(cmd.c_str());
-            }
-
-            if (scfMixingParameter != -1.0) {
-              cmd = "sed -i 's/set MIXING PARAMETER.*/set MIXING PARAMETER=" +
-                    std::to_string(scfMixingParameter) + "/g' " +
-                    parameter_file_path;
-              system(cmd.c_str());
-            }
-
-            if (mixingScheme != "Unprovided") {
-              // A plain 's/set MIXING METHOD.*/.../' is a silent no-op when the
-              // template has no MIXING METHOD line (the default), which drops the
-              // value. Delete any existing line, then append under the SCF
-              // parameters subsection so it always takes effect.
-              cmd = "sed -i '/set MIXING METHOD/d' " + parameter_file_path;
-              system(cmd.c_str());
-              cmd = "sed -i '/subsection SCF parameters/a\\    set MIXING METHOD=" +
-                    mixingScheme + "' " + parameter_file_path;
-              system(cmd.c_str());
-            }
-
-            // Disable default forces and stress in prm file (controlled
-            // dynamically) Use [[:blank:]]* to allow optional spaces, and .*
-            // for value
-            const std::string ionForce = computeIonForces ? "true" : "false";
-            cmd =
-              "sed -i 's/set[[:blank:]]\\+ION[[:blank:]]\\+FORCE.*/set ION FORCE=" +
-              ionForce + "/g' " + parameter_file_path;
-            system(cmd.c_str());
-
-            const std::string cellStress = computeStress ? "true" : "false";
-            cmd =
-              "sed -i 's/set[[:blank:]]\\+CELL[[:blank:]]\\+STRESS.*/set CELL STRESS=" +
-              cellStress + "/g' " + parameter_file_path;
-            system(cmd.c_str());
-
-            if (npkpt != 999999) {
-              const dftfe::Int totalIrreducibleKpt =
-                mpGrid[0] * mpGrid[1] * mpGrid[2] / 2;
-              const dftfe::Int npkptSet =
-                npkpt > 0 ? npkpt :
-                            internalWrapper::divisor_closest(totalMPIProcesses,
-                                                             totalIrreducibleKpt);
-              cmd =
-                "sed -i 's/set NPKPT.*/set NPKPT=" + std::to_string(npkptSet) +
-                "/g' " + parameter_file_path;
-              system(cmd.c_str());
-            }
-
-            if (meshSize != -1.0) {
-              cmd =
-                "sed -i 's/set MESH SIZE AROUND ATOM.*/set MESH SIZE AROUND ATOM=" +
-                std::to_string(meshSize) + "/g' " + parameter_file_path;
-              system(cmd.c_str());
-            }
-
-            if (verbosity != -1) {
-              cmd = "sed -i 's/set VERBOSITY.*/set VERBOSITY=" +
-                    std::to_string(verbosity) + "/g' " + parameter_file_path;
-              system(cmd.c_str());
-            }
-
-            if (atomBallRadius != -1.0) {
-              int rank_debug;
-              MPI_Comm_rank(d_mpi_comm_parent, &rank_debug);
-              if (rank_debug == 0)
-                std::cout << "DEBUG: applying atomBallRadius=" << atomBallRadius
+            const bool reportPrm =
+              verbosity >= 1 &&
+              dealii::Utilities::MPI::this_mpi_process(d_mpi_comm_parent) == 0;
+            auto applyPrm = [&](const std::string &section,
+                                const std::string &key,
+                                const std::string &value) {
+              if (!prm.set(section, key, value) && reportPrm)
+                std::cout << "DFT-FE warning: .prm entry '" << key
+                          << "' (subsection '" << section
+                          << "') is not declared in this build - ignored."
                           << std::endl;
-              cmd =
-                "sed -i 's/set[[:blank:]]\\+ATOM[[:blank:]]\\+BALL[[:blank:]]\\+RADIUS.*/set ATOM BALL RADIUS=" +
-                std::to_string(atomBallRadius) + "/g' " + parameter_file_path;
-              system(cmd.c_str());
-            }
+            };
 
-            if (orthogonalizationType != "Unprovided") {
-              // delete-any + append under its subsection (replace-only silently
-              // drops when the template lacks the key).
-              cmd = "sed -i '/set ORTHOGONALIZATION TYPE/d' " + parameter_file_path;
-              system(cmd.c_str());
-              cmd = "sed -i '/subsection Eigen-solver parameters/a\\    set ORTHOGONALIZATION TYPE = " +
-                    orthogonalizationType + "' " + parameter_file_path;
-              system(cmd.c_str());
-            }
+            applyPrm("Geometry",
+                     "NATOMS",
+                     std::to_string(atomicPositionsCart.size()));
+            applyPrm("Geometry",
+                     "NATOM TYPES",
+                     std::to_string(atomicNumbersUniqueVec.size()));
+            applyPrm("Geometry",
+                     "ATOMIC COORDINATES FILE",
+                     d_scratchFolderName + "/coordinates.inp");
+            applyPrm("Geometry",
+                     "DOMAIN VECTORS FILE",
+                     d_scratchFolderName + "/domainVectors.inp");
+            applyPrm("DFT functional parameters",
+                     "PSEUDOPOTENTIAL FILE NAMES LIST",
+                     d_scratchFolderName + "/pseudo.inp");
 
-            if (smearedNuclearCharges != -1) {
-              const std::string smeared =
-                smearedNuclearCharges ? "true" : "false";
-              cmd = "sed -i '/set SMEARED NUCLEAR CHARGES/d' " + parameter_file_path;
-              system(cmd.c_str());
-              cmd = "sed -i '/subsection Boundary conditions/a\\  set SMEARED NUCLEAR CHARGES=" +
-                    smeared + "' " + parameter_file_path;
-              system(cmd.c_str());
-            }
+            if (pbc.size() >= 3)
+              {
+                // CELL STRESS is only meaningful for a periodic cell.
+                if (!pbc[0] && !pbc[1] && !pbc[2])
+                  applyPrm("Optimization", "CELL STRESS", "false");
 
-            if (useGroupSymmetry != -1) {
-              const std::string groupSym = useGroupSymmetry ? "true" : "false";
-              cmd = "sed -i '/set USE GROUP SYMMETRY/d' " + parameter_file_path;
-              system(cmd.c_str());
-              cmd = "sed -i '/subsection Brillouin zone k point sampling options/a\\  set USE GROUP SYMMETRY=" +
-                    groupSym + "' " + parameter_file_path;
-              system(cmd.c_str());
-            }
+                applyPrm("Boundary conditions",
+                         "PERIODIC1",
+                         pbc[0] ? "true" : "false");
+                applyPrm("Boundary conditions",
+                         "PERIODIC2",
+                         pbc[1] ? "true" : "false");
+                applyPrm("Boundary conditions",
+                         "PERIODIC3",
+                         pbc[2] ? "true" : "false");
+              }
 
-            if (useTimeReversalSymmetry != -1) {
-              const std::string timeRev =
-                useTimeReversalSymmetry ? "true" : "false";
-              cmd =
-                "sed -i 's/set USE TIME REVERSAL SYMMETRY.*/set USE TIME REVERSAL SYMMETRY=" +
-                timeRev + "/g' " + parameter_file_path;
-              system(cmd.c_str());
-            }
+            if (mpGrid.size() >= 3)
+              {
+                applyPrm("Monkhorst-Pack (MP) grid generation",
+                         "SAMPLING POINTS 1",
+                         std::to_string(mpGrid[0]));
+                applyPrm("Monkhorst-Pack (MP) grid generation",
+                         "SAMPLING POINTS 2",
+                         std::to_string(mpGrid[1]));
+                applyPrm("Monkhorst-Pack (MP) grid generation",
+                         "SAMPLING POINTS 3",
+                         std::to_string(mpGrid[2]));
+              }
 
-            if (mixingHistory != -1) {
-              cmd = "sed -i '/set LBFGS HISTORY/d' " + parameter_file_path;
-              system(cmd.c_str());
-              cmd = "sed -i '/subsection Optimization/a\\    set LBFGS HISTORY=" +
-                    std::to_string(mixingHistory) + "' " + parameter_file_path;
-              system(cmd.c_str());
-            }
+            if (mpGridShift.size() >= 3)
+              {
+                applyPrm("Monkhorst-Pack (MP) grid generation",
+                         "SAMPLING SHIFT 1",
+                         std::to_string(mpGridShift[0]));
+                applyPrm("Monkhorst-Pack (MP) grid generation",
+                         "SAMPLING SHIFT 2",
+                         std::to_string(mpGridShift[1]));
+                applyPrm("Monkhorst-Pack (MP) grid generation",
+                         "SAMPLING SHIFT 3",
+                         std::to_string(mpGridShift[2]));
+              }
 
-            if (maxSCFIterations != -1) {
-              cmd = "sed -i 's/set MAXIMUM ITERATIONS.*/set MAXIMUM ITERATIONS=" +
-                    std::to_string(maxSCFIterations) + "/g' " +
-                    parameter_file_path;
-              system(cmd.c_str());
-            }
+            if (spinPolarizedDFT != -1)
+              applyPrm("DFT functional parameters",
+                       "SPIN POLARIZATION",
+                       std::to_string(spinPolarizedDFT));
 
-            if (dispersionCorrectionType != -1) {
-              cmd =
-                "sed -i 's/set DISPERSION CORRECTION TYPE.*/set DISPERSION CORRECTION TYPE=" +
-                std::to_string(dispersionCorrectionType) + "/g' " +
-                parameter_file_path;
-              system(cmd.c_str());
-            }
+            // Current DFT-FE declares TOTAL MAGNETIZATION only; the per-atom
+            // START MAGNETIZATION entry the old sed also wrote has never been
+            // declared in this branch, so it was always a no-op.
+            if (startMagnetization != -1.0)
+              applyPrm("DFT functional parameters",
+                       "TOTAL MAGNETIZATION",
+                       std::to_string(startMagnetization * 2 *
+                                      atomicNumbersUniqueVec.size()));
 
-            if (pseudopotentialCalculation != -1) {
-              const std::string pspCalc =
-                pseudopotentialCalculation ? "true" : "false";
-              cmd =
-                "sed -i 's/set PSEUDOPOTENTIAL CALCULATION.*/set PSEUDOPOTENTIAL CALCULATION=" +
-                pspCalc + "/g' " + parameter_file_path;
-              system(cmd.c_str());
-            }
+            if (polynomialOrder != -1)
+              applyPrm("Finite element mesh parameters",
+                       "POLYNOMIAL ORDER",
+                       std::to_string(polynomialOrder));
+
+            if (tolerance != -1.0)
+              {
+                std::ostringstream oss;
+                oss << std::scientific << std::setprecision(13) << tolerance;
+                applyPrm("SCF parameters", "TOLERANCE", oss.str());
+              }
+
+            if (xc != "Unprovided")
+              applyPrm("DFT functional parameters",
+                       "EXCHANGE CORRELATION TYPE",
+                       xc);
+
+            if (fermiDiracSmearingTemp != -1.0)
+              applyPrm("SCF parameters",
+                       "TEMPERATURE",
+                       std::to_string(fermiDiracSmearingTemp));
+
+            if (scfMixingParameter != -1.0)
+              applyPrm("SCF parameters",
+                       "MIXING PARAMETER",
+                       std::to_string(scfMixingParameter));
+
+            if (mixingScheme != "Unprovided")
+              applyPrm("SCF parameters", "MIXING METHOD", mixingScheme);
+
+            applyPrm("Optimization",
+                     "ION FORCE",
+                     computeIonForces ? "true" : "false");
+            applyPrm("Optimization",
+                     "CELL STRESS",
+                     computeStress ? "true" : "false");
+
+            if (npkpt != 999999)
+              {
+                const dftfe::Int totalIrreducibleKpt =
+                  mpGrid[0] * mpGrid[1] * mpGrid[2] / 2;
+                const dftfe::Int npkptSet =
+                  npkpt > 0 ?
+                    npkpt :
+                    internalWrapper::divisor_closest(totalMPIProcesses,
+                                                     totalIrreducibleKpt);
+                applyPrm("Parallelization", "NPKPT", std::to_string(npkptSet));
+              }
+
+            if (meshSize != -1.0)
+              applyPrm("Auto mesh generation parameters",
+                       "MESH SIZE AROUND ATOM",
+                       std::to_string(meshSize));
+
+            if (verbosity != -1)
+              applyPrm("", "VERBOSITY", std::to_string(verbosity));
+
+            if (atomBallRadius != -1.0)
+              applyPrm("Auto mesh generation parameters",
+                       "ATOM BALL RADIUS",
+                       std::to_string(atomBallRadius));
+
+            if (orthogonalizationType != "Unprovided")
+              applyPrm("Eigen-solver parameters",
+                       "ORTHOGONALIZATION TYPE",
+                       orthogonalizationType);
+
+            if (smearedNuclearCharges != -1)
+              applyPrm("Boundary conditions",
+                       "SMEARED NUCLEAR CHARGES",
+                       smearedNuclearCharges ? "true" : "false");
+
+            if (useGroupSymmetry != -1)
+              applyPrm("Brillouin zone k point sampling options",
+                       "USE GROUP SYMMETRY",
+                       useGroupSymmetry ? "true" : "false");
+
+            if (useTimeReversalSymmetry != -1)
+              applyPrm("Brillouin zone k point sampling options",
+                       "USE TIME REVERSAL SYMMETRY",
+                       useTimeReversalSymmetry ? "true" : "false");
+
+            if (mixingHistory != -1)
+              applyPrm("SCF parameters",
+                       "MIXING HISTORY",
+                       std::to_string(mixingHistory));
+
+            if (maxSCFIterations != -1)
+              applyPrm("SCF parameters",
+                       "MAXIMUM ITERATIONS",
+                       std::to_string(maxSCFIterations));
+
+            if (dispersionCorrectionType != -1)
+              applyPrm("Dispersion Correction",
+                       "DISPERSION CORRECTION TYPE",
+                       std::to_string(dispersionCorrectionType));
+
+            if (pseudopotentialCalculation != -1)
+              applyPrm("DFT functional parameters",
+                       "PSEUDOPOTENTIAL CALCULATION",
+                       pseudopotentialCalculation ? "true" : "false");
 
             if (numBands != 999999)
-              {
-                cmd =
-                  "sed -i 's/set NUMBER OF KOHN-SHAM WAVEFUNCTIONS.*/set NUMBER OF KOHN-SHAM WAVEFUNCTIONS=" +
-                  std::to_string(numBands) + "/g' " + parameter_file_path;
-                system(cmd.c_str());
-              }
+              applyPrm("Eigen-solver parameters",
+                       "NUMBER OF KOHN-SHAM WAVEFUNCTIONS",
+                       std::to_string(numBands));
 
-            // Mehul: Added support for block size parameters
-            // Only write if > 0 (0 implies auto/default)
             if (wfcBlockSize != 999999)
-              {
-                cmd = "sed -i '/subsection Eigen-solver parameters/a\\    set WFC BLOCK SIZE=" +
-                      std::to_string(wfcBlockSize) + "' " +
-                      parameter_file_path;
-                system(cmd.c_str());
-              }
+              applyPrm("Eigen-solver parameters",
+                       "WFC BLOCK SIZE",
+                       std::to_string(wfcBlockSize));
 
             if (chebyWfcBlockSize != 999999)
-              {
-                cmd =
-                  "sed -i '/subsection Eigen-solver parameters/a\\    set CHEBY WFC BLOCK SIZE=" +
-                  std::to_string(chebyWfcBlockSize) + "' " +
-                  parameter_file_path;
-                system(cmd.c_str());
-              }
+              applyPrm("Eigen-solver parameters",
+                       "CHEBY WFC BLOCK SIZE",
+                       std::to_string(chebyWfcBlockSize));
 
-            // Mehul: DENSITY QUADRATURE RULE (e.g. 10 for accuracy benchmarks)
             if (densityQuadratureRule != -1)
-              {
-                cmd =
-                  "sed -i '/subsection Finite element mesh parameters/a\\  set DENSITY QUADRATURE RULE=" +
-                  std::to_string(densityQuadratureRule) + "' " +
-                  parameter_file_path;
-                system(cmd.c_str());
-              }
+              applyPrm("Finite element mesh parameters",
+                       "DENSITY QUADRATURE RULE",
+                       std::to_string(densityQuadratureRule));
 
-            // Mehul: USE SINGLE PREC CHEBY (significant performance flag)
             if (useSinglePrecCheby != -1)
-              {
-                const std::string singlePrec = useSinglePrecCheby ? "true" : "false";
-                cmd =
-                  "sed -i '/subsection Eigen-solver parameters/a\\    set USE SINGLE PREC CHEBY=" +
-                  singlePrec + "' " +
-                  parameter_file_path;
-                system(cmd.c_str());
-              }
+              applyPrm("Eigen-solver parameters",
+                       "USE SINGLE PREC CHEBY",
+                       useSinglePrecCheby ? "true" : "false");
 
-            if (keepScratch) {
-              cmd = "sed -i 's/set KEEP SCRATCH FOLDER.*/set KEEP SCRATCH FOLDER=true/g' " +
-                    parameter_file_path;
-              system(cmd.c_str());
-            }
+            if (keepScratch)
+              applyPrm("", "KEEP SCRATCH FOLDER", "true");
 
-            // ── Generic .prm overrides (Mehul): applied AFTER all typed
-            // injection. Format: "section|||key|||value@@@section|||key|||value".
-            // Empty section => top-level. delete-any + append (creating the
-            // subsection if missing) so nothing silently defaults. This one loop
-            // supersedes the per-parameter sed blocks for the long tail of params.
+            // Generic .prm overrides (Mehul): applied AFTER all typed injection
+            // so an explicit user override always wins. Format:
+            // "section|||key|||value@@@section|||key|||value", empty section =
+            // top level. This is the single path used by the calculator's
+            // prm_file=/extra_prm= escape hatches and by every "planned" kwarg.
             if (!d_socketPrmOverrides.empty())
               {
                 const std::string ov = d_socketPrmOverrides;
-                size_t            pos = 0;
+                std::size_t       pos = 0;
                 while (pos < ov.size())
                   {
-                    size_t      e = ov.find("@@@", pos);
-                    std::string entry = ov.substr(
+                    const std::size_t e = ov.find("@@@", pos);
+                    const std::string entry = ov.substr(
                       pos, e == std::string::npos ? std::string::npos : e - pos);
                     pos = (e == std::string::npos) ? ov.size() : e + 3;
-                    size_t d1 = entry.find("|||");
+
+                    const std::size_t d1 = entry.find("|||");
                     if (d1 == std::string::npos)
                       continue;
-                    size_t d2 = entry.find("|||", d1 + 3);
+                    const std::size_t d2 = entry.find("|||", d1 + 3);
                     if (d2 == std::string::npos)
                       continue;
-                    std::string sec = entry.substr(0, d1);
-                    std::string key = entry.substr(d1 + 3, d2 - d1 - 3);
-                    std::string val = entry.substr(d2 + 3);
-                    cmd = "sed -i '/set " + key + " /d;/set " + key + "=/d' " +
-                          parameter_file_path;
-                    system(cmd.c_str());
-                    if (sec.empty())
-                      {
-                        cmd = "sed -i '1i set " + key + " = " + val + "' " +
-                              parameter_file_path;
-                      }
-                    else
-                      {
-                        cmd = "grep -q 'subsection " + sec + "' " +
-                              parameter_file_path + " || sed -i '1i subsection " +
-                              sec + "\\nend' " + parameter_file_path;
-                        system(cmd.c_str());
-                        cmd = "sed -i '/subsection " + sec + "/a\\    set " + key +
-                              " = " + val + "' " + parameter_file_path;
-                      }
-                    system(cmd.c_str());
+
+                    applyPrm(entry.substr(0, d1),
+                             entry.substr(d1 + 3, d2 - d1 - 3),
+                             entry.substr(d2 + 3));
                   }
               }
 
+            prm.write(parameter_file_path);
             system("sync"); // Force filesystem flush
           }
 

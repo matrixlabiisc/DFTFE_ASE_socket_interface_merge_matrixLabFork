@@ -33,7 +33,8 @@ from .backends.socket import SocketBackend, DFTFEError
 from .binary import select_binary_kind
 from .config import get_profile, resolve_binaries
 from .launchers import detect_launcher, get_launcher
-from .params import BY_KWARG, to_prm_entries
+from .params import (BY_KWARG, DRIVER_OWNED_KEYS, GEOMETRY_KEYS, LEGACY_KEYS,
+                     to_prm_entries)
 
 log = logging.getLogger("dftfe_ase")
 
@@ -62,12 +63,29 @@ def _serialize_overrides(entries):
     return "@@@".join(f"{e['section'] or ''}|||{e['key']}|||{e['value']}" for e in entries)
 
 
-def _parse_prm_file(path):
-    """Parse a DFT-FE .prm into generic {section,key,value} entries (option A)."""
+def read_prm(path):
+    """Parse a DFT-FE ``.prm`` into ``{section, key, value}`` entries.
+
+    ``section`` is the *innermost* subsection name (``""`` at top level), which
+    is what the C++ injector matches on. Three classes of entry are handled
+    specially so that pointing the calculator at a real benchmark deck produces
+    the run the deck describes:
+
+    * geometry / pseudopotential paths (:data:`~dftfe_ase.params.GEOMETRY_KEYS`)
+      are dropped -- the atoms come from the ASE ``Atoms`` object;
+    * DFT-FE v1.0 key spellings are rewritten via
+      :data:`~dftfe_ase.params.LEGACY_KEYS`;
+    * anything removed from DFT-FE is dropped with a warning.
+
+    The warnings matter: deal.II parses ``.prm`` files with
+    ``skip_undefined=true``, so an unrecognised key costs you nothing at parse
+    time and silently changes the algorithm at run time.
+    """
     import re
+
     entries, stack = [], []
     for line in open(path):
-        s = line.strip()
+        s = line.split("#", 1)[0].strip()
         m = re.match(r"subsection\s+(.+)", s)
         if m:
             stack.append(m.group(1).strip())
@@ -77,10 +95,40 @@ def _parse_prm_file(path):
                 stack.pop()
             continue
         m = re.match(r"set\s+([^=]+?)\s*=\s*(.*)", s)
-        if m:
-            entries.append({"section": stack[-1] if stack else "",
-                            "key": m.group(1).strip(), "value": m.group(2).strip()})
+        if not m:
+            continue
+
+        section = stack[-1] if stack else ""
+        key, value = m.group(1).strip(), m.group(2).strip()
+
+        if key in GEOMETRY_KEYS:
+            log.debug("%s: ignoring geometry entry %r (atoms come from ASE)", path, key)
+            continue
+
+        if key in DRIVER_OWNED_KEYS:
+            log.debug("%s: ignoring driver entry %r (set by the calculator)", path, key)
+            continue
+
+        if (section, key) in LEGACY_KEYS:
+            replacement = LEGACY_KEYS[(section, key)]
+            if replacement is None:
+                log.warning(
+                    "%s: '%s' (subsection '%s') no longer exists in DFT-FE; ignored. "
+                    "The run will use current defaults for this behaviour.",
+                    path, key, section,
+                )
+                continue
+            section, new_key = replacement
+            log.warning("%s: '%s' renamed to '%s'; using the current spelling.",
+                        path, key, new_key)
+            key = new_key
+
+        entries.append({"section": section, "key": key, "value": value})
     return entries
+
+
+# Back-compat alias for the private name this used to have.
+_parse_prm_file = read_prm
 
 
 def _extra_prm_entries(extra):
@@ -113,6 +161,7 @@ class DFTFE(Calculator):
         backend=None,
         cluster: str | None = None,
         launcher: str | None = None,
+        launcher_args=(),
         nproc: int | None = None,
         gpus_per_task: int | None = None,
         dftfe_real: str | None = None,
@@ -191,12 +240,18 @@ class DFTFE(Calculator):
             self._binaries = resolve_binaries(
                 real=dftfe_real, complex=dftfe_complex, bin_dir=bin_dir, cluster=cluster
             )
+            # launcher_args land between the launcher's own flags and the binary
+            # -- the slot for site placement options and rank wrappers, e.g.
+            # Aurora's ["--ppn", "12", "gpu_tile_compact.sh"], which is how one
+            # rank gets bound to each of the 12 GPU tiles on a node.
+            launcher_kwargs = dict(gpus_per_task=gpus_per_task,
+                                   extra_args=tuple(launcher_args))
             if launcher is not None:
-                self._launcher = get_launcher(launcher, gpus_per_task=gpus_per_task)
+                self._launcher = get_launcher(launcher, **launcher_kwargs)
             elif profile is not None:
-                self._launcher = get_launcher(profile.launcher, gpus_per_task=gpus_per_task)
+                self._launcher = get_launcher(profile.launcher, **launcher_kwargs)
             else:
-                self._launcher = detect_launcher(gpus_per_task=gpus_per_task)
+                self._launcher = detect_launcher(**launcher_kwargs)
             self._nproc = nproc
 
     # ── launch construction ────────────────────────────────────────────

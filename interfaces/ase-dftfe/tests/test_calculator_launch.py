@@ -31,3 +31,18 @@ def test_nonperiodic_forces_real_even_with_grid():
 def test_explicit_launcher_local_direct():
     calc = DFTFE(launcher="local", dftfe_real="/x/dftfe", nproc=1)
     assert calc.build_launch_argv([False, False, False]) == ["/x/dftfe"]
+
+
+def test_launcher_args_sit_between_flags_and_binary():
+    """Aurora binds one rank per GPU tile via a wrapper script, which must be
+    argv[-2]: `mpiexec -n N --ppn 12 gpu_tile_compact.sh <binary>`."""
+    calc = DFTFE(launcher="mpiexec", dftfe_real="/x/dftfe", nproc=384,
+                 launcher_args=["--ppn", "12", "gpu_tile_compact.sh"])
+    assert calc.build_launch_argv([True, True, True]) == [
+        "mpiexec", "-n", "384", "--ppn", "12", "gpu_tile_compact.sh", "/x/dftfe"]
+
+
+def test_launcher_args_default_to_nothing():
+    calc = DFTFE(launcher="mpiexec", dftfe_real="/x/dftfe", nproc=4)
+    assert calc.build_launch_argv([True, True, True]) == [
+        "mpiexec", "-n", "4", "/x/dftfe"]

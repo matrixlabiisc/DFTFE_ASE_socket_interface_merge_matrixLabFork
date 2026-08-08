@@ -16,16 +16,28 @@
 
 Public API::
 
-    from dftfe_ase import DFTFE
+    from dftfe_ase import DFTFE, read_dftfe
 
 `DFTFE` is an ASE ``Calculator`` that drives a persistent DFT-FE process over a
 socket, avoiding per-call MPI startup. The transport lives behind a pluggable
 ``Backend`` (see :mod:`dftfe_ase.backends`); the wire format is defined once in
 :mod:`dftfe_ase.protocol`.
+
+There are two equivalent ways in. Describe the system in Python::
+
+    atoms.calc = DFTFE(xc="GGA-PBE", polynomial_order=7, use_device=True)
+
+or hand it an existing native DFT-FE deck (:mod:`dftfe_ase.io`)::
+
+    atoms, calc = read_dftfe("parameterFileGPU32NodesMPS.prm")
+
+Both land on the same calculation; ``tests/test_prm_roundtrip.py`` asserts it.
 """
 
-from .calculator import DFTFE, DFTFEError
+from .calculator import DFTFE, DFTFEError, read_prm
+from .io import read_dftfe, read_dftfe_atoms
 from .protocol import PROTOCOL_VERSION
 
-__all__ = ["DFTFE", "DFTFEError", "PROTOCOL_VERSION"]
+__all__ = ["DFTFE", "DFTFEError", "PROTOCOL_VERSION",
+           "read_dftfe", "read_dftfe_atoms", "read_prm"]
 __version__ = "1.0.0.dev0"
