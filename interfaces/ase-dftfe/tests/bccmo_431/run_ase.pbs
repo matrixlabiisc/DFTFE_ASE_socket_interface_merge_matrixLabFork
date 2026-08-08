@@ -1,0 +1,55 @@
+#!/bin/bash
+# ---------------------------------------------------------------------
+# ASE (socket-driven) arm of the BCC-Mo 431-atom scaling study, on Aurora.
+#
+# The Python process stays on the head node of the allocation and drives DFT-FE
+# over a TCP socket; ase_bccmo431.py issues the mpiexec itself, so this script
+# launches plain python, NOT mpiexec.
+#
+# Submit via ./submit.sh ase <nodes>. Do not qsub this directly.
+# ---------------------------------------------------------------------
+#PBS -A DFTCalc2
+#PBS -q debug-scaling
+#PBS -l walltime=01:00:00
+#PBS -l filesystems=flare:home
+#PBS -l place=scatter
+#PBS -j oe
+
+set -euo pipefail
+
+: "${NODES:?set NODES (use submit.sh)}"
+: "${DFTFE_INSTALL:?set DFTFE_INSTALL to the ase_redesign install prefix}"
+: "${ASE_DFTFE_SRC:?set ASE_DFTFE_SRC to .../interfaces/ase-dftfe/src}"
+
+# System python3 has no numpy and will crash. This interpreter is the one the
+# project standardises on -- see PROJECT_Aurora.md section 2.
+PYTHON="${PYTHON:-/home/phanim/claude-env/bin/python3}"
+
+RANKS_PER_NODE=12
+RUNDIR="${PBS_O_WORKDIR:-$PWD}"
+PRM="parameterFileAurora${NODES}Nodes.prm"
+OUT="ase_${NODES}nodes.out"
+
+cd "$RUNDIR"
+
+export PYTHONPATH="${ASE_DFTFE_SRC}:${PYTHONPATH:-}"
+export PYTHONUNBUFFERED=1
+
+[[ -x "$PYTHON" ]] || { echo "no python at $PYTHON" >&2; exit 1; }
+[[ -f "$PRM" ]] || { echo "no deck $PRM -- run make_decks.py" >&2; exit 1; }
+[[ -f coordinates.inp ]] || { echo "no coordinates.inp -- run make_inputs.py" >&2; exit 1; }
+
+echo "=== ASE arm: ${NODES} nodes, $((NODES * RANKS_PER_NODE)) ranks, $(date -u) ==="
+echo "python : $PYTHON"
+echo "deck   : $PRM  (supplies every DFT parameter AND the geometry)"
+
+"$PYTHON" ase_bccmo431.py \
+    --prm "$PRM" \
+    --nodes "$NODES" \
+    --ranks-per-node "$RANKS_PER_NODE" \
+    --dftfe-real "${DFTFE_INSTALL}/real/dftfe" \
+    --out "result_ase_${NODES}nodes.json" > "$OUT" 2>&1
+
+echo "=== done, $(date -u) ==="
+tail -12 "$OUT"
+echo "wrote $OUT and result_ase_${NODES}nodes.json"
