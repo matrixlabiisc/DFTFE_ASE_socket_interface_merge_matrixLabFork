@@ -55,6 +55,18 @@
 
 namespace dftfe
 {
+  // Defined in src/dft/moveAtoms.cc. Declared here the same way restart.cc
+  // declares it, so reinit() folds out-of-cell atoms with DFT-FE's own
+  // periodic wrap rather than a caller-side reimplementation.
+  namespace internal
+  {
+    std::vector<double>
+    wrapAtomsAcrossPeriodicBc(const dealii::Point<3>    &cellCenteredCoord,
+                              const dealii::Point<3>    &corner,
+                              const std::vector<double> &latticeVectors,
+                              const std::vector<bool>   &periodicBc);
+  } // namespace internal
+
   namespace internalWrapper
   {
     dftfe::Int
@@ -670,14 +682,43 @@ namespace dftfe
                     coord[1] = atomicPositionsCart[i][1];
                     coord[2] = atomicPositionsCart[i][2];
 
-                    std::vector<double> frac =
-                      dftUtils::getFractionalCoordinates(cellVectorsFlattened,
-                                                         coord);
+                    // Fold out-of-cell atoms back into [0,1] along periodic
+                    // directions using DFT-FE's own periodic wrap -- the same
+                    // routine updateAtomPositionsAndMoveMesh() and the restart
+                    // path use. External drivers (ASE optimizers, MD wrappers)
+                    // legitimately step an atom outside the cell; for a
+                    // periodic direction that atom is its own image, so this
+                    // is a relabelling and leaves the physics untouched.
+                    //
+                    // corner is the zero point because atomicPositionsCart is
+                    // expressed relative to the cell origin, matching the
+                    // two-argument getFractionalCoordinates() used previously
+                    // here. Non-periodic directions are left alone and still
+                    // assert, since folding them would move the atom through
+                    // vacuum to a genuinely different structure.
+                    dealii::Point<3> atomCoor;
+                    atomCoor[0] = coord[0];
+                    atomCoor[1] = coord[1];
+                    atomCoor[2] = coord[2];
+
+                    const dealii::Point<3> corner;
+
+                    std::vector<bool> periodicBc(3, false);
                     for (dftfe::uInt idim = 0; idim < 3; idim++)
-                      AssertThrow(
-                        frac[idim] > -1e-7 && frac[idim] < (1.0 + 1e-7),
-                        dealii::ExcMessage(
-                          "DFT-FE Error: fractional coordinates doesn't lie in [0,1]. Please check input atomicPositionsCart."));
+                      periodicBc[idim] = pbc[idim];
+
+                    std::vector<double> frac =
+                      internal::wrapAtomsAcrossPeriodicBc(atomCoor,
+                                                          corner,
+                                                          cellVectorsFlattened,
+                                                          periodicBc);
+
+                    for (dftfe::uInt idim = 0; idim < 3; idim++)
+                      if (!periodicBc[idim])
+                        AssertThrow(
+                          frac[idim] > -1e-7 && frac[idim] < (1.0 + 1e-7),
+                          dealii::ExcMessage(
+                            "DFT-FE Error: fractional coordinates doesn't lie in [0,1] along a non-periodic direction. Please check input atomicPositionsCart."));
 
                     dftfeCoordinates[i][2] = frac[0];
                     dftfeCoordinates[i][3] = frac[1];
