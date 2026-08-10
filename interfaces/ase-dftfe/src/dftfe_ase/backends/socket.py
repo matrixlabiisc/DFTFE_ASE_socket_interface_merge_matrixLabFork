@@ -74,6 +74,10 @@ class SocketBackend(Backend):
         self._started = False
         self.last_wait_s = None  # wall time of the last socket round-trip (send->recv)
         self.startup_s = None    # process launch + MPI init + connect (one-time)
+        self.bind_s = 0.0        # TCP server setup            (interface-only)
+        self.spawn_s = 0.0       # fork mpiexec                (native pays too)
+        self.boot_s = 0.0        # DFT-FE MPI_Init + start     (native pays too)
+        self.handshake_s = 0.0   # READY line                  (interface-only)
 
     # ── helpers ─────────────────────────────────────────────────────────
     def _verbose(self) -> bool:
@@ -124,6 +128,7 @@ class SocketBackend(Backend):
 
     def _accept(self) -> None:
         self._server.settimeout(self.connect_timeout)
+        t0 = time.perf_counter()
         try:
             self._conn, _addr = self._server.accept()
         except socket.timeout as exc:
@@ -133,20 +138,40 @@ class SocketBackend(Backend):
                 f"DFT-FE did not connect within {self.connect_timeout}s "
                 f"(process exit code {code}); see {self.log_file}"
             ) from exc
+        # Time spent blocked here is DFT-FE booting: MPI_Init across every rank
+        # plus program start. A native run pays exactly the same cost; it simply
+        # is not visible because DFT-FE's internal timer starts after MPI_Init.
+        self.boot_s = time.perf_counter() - t0
         self._conn.settimeout(None)  # SCF can be arbitrarily slow
+        t1 = time.perf_counter()
         self._chan = MessageChannel(self._conn)
         handshake = self._chan.recv_handshake()
+        self.handshake_s = time.perf_counter() - t1
         if handshake != HANDSHAKE:
             log.warning("unexpected handshake from DFT-FE: %r", handshake)
 
     # ── Backend API ─────────────────────────────────────────────────────
     def start(self) -> None:
+        """Bring up the server and the DFT-FE process.
+
+        Timed in pieces so the caller can separate cost the interface *adds*
+        from cost a native DFT-FE run pays anyway:
+
+          bind_s      -- create/bind/listen the TCP server      (interface only)
+          spawn_s     -- fork mpiexec                           (native does this too)
+          boot_s      -- block until DFT-FE connects: MPI_Init
+                         across all ranks + program start       (native does this too)
+          handshake_s -- read the READY line                    (interface only)
+        """
         if self._started:
             return
         t0 = time.perf_counter()
         self._start_server()
+        self.bind_s = time.perf_counter() - t0
+        t1 = time.perf_counter()
         self._launch()          # spawn mpirun + DFT-FE (MPI init happens here)
-        self._accept()          # wait for connect + READY handshake
+        self.spawn_s = time.perf_counter() - t1
+        self._accept()          # sets boot_s and handshake_s
         self.startup_s = time.perf_counter() - t0
         self._started = True
 

@@ -188,6 +188,10 @@ class DFTFE(Calculator):
         self.verbosity = verbosity
         self.debug_timing = debug_timing
         self.timing = None  # dict of the last call's timing breakdown
+        # Backend.start() (mpiexec spawn + MPI init + handshake) runs lazily on
+        # the first compute(). Track it so its cost is charged to startup once,
+        # and never to per-step interface overhead.
+        self._startup_counted = False
 
         # Pseudopotential encoding: dict -> "DICT|El:path|..." ; else path/string.
         if isinstance(psp_path, dict):
@@ -322,37 +326,83 @@ class DFTFE(Calculator):
                 stress = full_3x3_to_voigt_6_stress(stress)
             self.results["stress"] = stress
 
-        # Timing breakdown. The interface overhead in a multi-step workflow has
-        # TWO parts, both of which recur every step:
-        #   ase_overhead  = total - round_trip     (Python: unit conv, request build)
-        #   streaming     = round_trip - dft_compute  (serialize + send positions,
-        #                                               recv forces; MPI bcast; etc.)
-        # dft_compute (pure DFT-FE work) is reported by the C++ driver so it can
-        # be subtracted out. interface_overhead = ase_overhead + streaming.
+        # Timing breakdown.
+        #
+        # On the first calculate() of a process, backend.compute() lazily calls
+        # backend.start(), which spawns mpiexec, waits for MPI init across every
+        # rank, and completes the TCP handshake. That cost lands inside this
+        # timed window but outside last_wait_s, so it would otherwise be counted
+        # as Python overhead. It is NOT interface overhead: a native DFT-FE run
+        # spawns the identical mpiexec and pays the same launch, it simply does
+        # not appear in DFT-FE's internal timer, which starts after MPI init.
+        # Charging it to the interface would report a cost the interface does
+        # not introduce, so it is subtracted out and reported separately.
+        #
+        #   startup      = backend.startup_s        (launch; common to both arms)
+        #   python       = total - round_trip - startup  (unit conv, request build,
+        #                                                 response parse)
+        #   streaming    = round_trip - dft_compute (serialize + send, recv)
+        #   interface    = python + streaming       (what ASE actually adds)
+        #
+        # Only `interface` recurs every step; `startup` is paid once per process.
         total = time.perf_counter() - t_start
         round_trip = getattr(self.backend, "last_wait_s", None)
         if round_trip is not None:
             dft_compute = result.get("compute_time") if isinstance(result, dict) else None
-            ase_overhead = total - round_trip
+            b = self.backend
+            if not self._startup_counted:
+                self._startup_counted = True
+                spawn = getattr(b, "spawn_s", 0.0) or 0.0
+                boot = getattr(b, "boot_s", 0.0) or 0.0
+                bind = getattr(b, "bind_s", 0.0) or 0.0
+                shake = getattr(b, "handshake_s", 0.0) or 0.0
+            else:
+                spawn = boot = bind = shake = 0.0
+
             streaming = (round_trip - dft_compute) if dft_compute is not None else None
-            interface = ase_overhead + (streaming or 0.0)
+            python_overhead = total - round_trip - (bind + spawn + boot + shake)
+
+            # BUCKET 1 -- cost a native DFT-FE run pays too. Not attributable to
+            # the interface: same mpiexec, same rank count, same MPI_Init, same
+            # solver. Invisible in a native log only because DFT-FE's internal
+            # timer starts after MPI_Init.
+            dftfe_s = spawn + boot + (dft_compute or 0.0)
+
+            # BUCKET 2 -- cost that exists ONLY because of the interface.
+            interface_s = bind + shake + (streaming or 0.0) + python_overhead
+
             self.timing = {
                 "total_s": total,
-                "round_trip_s": round_trip,
+                # bucket 1: also incurred by native
+                "dftfe_s": dftfe_s,
+                "dftfe_spawn_s": spawn,
+                "dftfe_boot_s": boot,
                 "dft_compute_s": dft_compute,
+                # bucket 2: interface-only
+                "interface_s": interface_s,
+                "socket_bind_s": bind,
+                "handshake_s": shake,
                 "streaming_overhead_s": streaming,
-                "ase_overhead_s": ase_overhead,
-                "interface_overhead_s": interface,
-                "interface_overhead_pct": 100.0 * interface / total if total > 0 else 0.0,
+                "python_overhead_s": python_overhead,
+                # ratio of bucket 2 to the work itself
+                "interface_pct": 100.0 * interface_s / dftfe_s if dftfe_s > 0 else 0.0,
+                # legacy aliases
+                "round_trip_s": round_trip,
+                "ase_overhead_s": python_overhead,
+                "interface_overhead_s": interface_s,
+                "interface_overhead_pct": 100.0 * interface_s / dftfe_s if dftfe_s > 0 else 0.0,
             }
             if self.debug_timing:
-                stream_str = f"{streaming:.4f}s" if streaming is not None else "n/a (old binary)"
-                dc_str = f"{dft_compute:.4f}s" if dft_compute is not None else "n/a"
+                dc = f"{dft_compute:.4f}" if dft_compute is not None else "n/a"
+                st = f"{streaming:.6f}" if streaming is not None else "n/a"
                 msg = (
-                    f"[dftfe_ase debug_timing] total={total:.4f}s | "
-                    f"DFT compute={dc_str} | streaming={stream_str} | "
-                    f"ASE={ase_overhead:.4f}s | interface overhead="
-                    f"{interface:.4f}s ({self.timing['interface_overhead_pct']:.2f}%)"
+                    f"[dftfe_ase debug_timing] total={total:.4f}s\n"
+                    f"  DFT-FE (native pays too) = {dftfe_s:.4f}s "
+                    f"[spawn={spawn:.4f} boot={boot:.4f} compute={dc}]\n"
+                    f"  INTERFACE (ours)         = {interface_s:.6f}s "
+                    f"[bind={bind:.6f} handshake={shake:.6f} "
+                    f"streaming={st} python={python_overhead:.6f}] "
+                    f"= {self.timing['interface_pct']:.4f}% of DFT-FE"
                 )
                 log.info(msg)
                 print(msg, flush=True)

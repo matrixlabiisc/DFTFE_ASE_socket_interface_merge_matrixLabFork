@@ -177,6 +177,17 @@ def read_dftfe(prm_path, **overrides):
         "use_device": _as_bool(_lookup(entries, "USE GPU")),
     }
 
+    # VERBOSITY is top level (no subsection). The generic override path emits it
+    # with section="", and that entry does not reach dftParameters -- so a deck's
+    # "set VERBOSITY = 4" was silently dropped and the run came out at DFT-FE's
+    # socket default of -1 (completely silent). That made the socket arm write no
+    # log at all while the file-driven arm wrote every diagnostic, which is both a
+    # parameter-loss bug and a confound for any native-vs-socket timing
+    # comparison. Lift it into a typed kwarg like the others above.
+    verbosity = _lookup(entries, "VERBOSITY")
+    if verbosity is not None:
+        kwargs["verbosity"] = int(verbosity)
+
     grid = [_lookup(entries, f"SAMPLING POINTS {i}") for i in (1, 2, 3)]
     if all(g is not None for g in grid):
         kwargs["mp_grid"] = [int(g) for g in grid]
