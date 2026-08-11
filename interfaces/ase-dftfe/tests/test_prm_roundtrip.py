@@ -249,3 +249,59 @@ def test_serialized_payload_round_trips(deck):
     blob = _serialize_overrides(entries)
     decoded = [chunk.split("|||", 2) for chunk in blob.split("@@@")]
     assert decoded == [[e["section"], e["key"], str(e["value"])] for e in entries]
+
+
+# ── VERBOSITY, and the section-less-key trap it exposed ─────────────────────
+
+def test_verbosity_from_the_deck_reaches_the_calculator(deck):
+    """A regression test for a bug that silently invalidated a benchmark.
+
+    ``VERBOSITY`` sits at the top level of a deck, outside any subsection.
+    ``read_prm`` emits such entries with ``section=""``, and a section-less entry
+    never reaches ``dftParameters`` -- so ``set VERBOSITY = 4`` was dropped and the
+    run came out at DFT-FE's socket default of -1, completely silent. Nothing
+    failed; the socket arm simply wrote no log while the file-driven arm wrote
+    every diagnostic. That is a parameter loss on its own, and it also skewed every
+    native-vs-socket walltime, because only one arm was paying for the log I/O.
+
+    The fix lifts VERBOSITY into a typed kwarg. This pins it.
+    """
+    from dftfe_ase import read_dftfe
+
+    _atoms, calc = read_dftfe(deck, dftfe_real="/nonexistent/dftfe")
+    assert calc.verbosity == 4
+
+
+def test_verbosity_absent_from_deck_stays_unset(tmp_path):
+    """No VERBOSITY line must not become verbosity=0 -- that is a real setting."""
+    from dftfe_ase import read_dftfe
+
+    prm = tmp_path / "parameterFile.prm"
+    prm.write_text(DECK.replace("set VERBOSITY = 4\n", ""))
+    (tmp_path / "domainVectors.inp").write_text(
+        "10.0 0.0 0.0\n0.0 10.0 0.0\n0.0 0.0 10.0\n")
+    (tmp_path / "coordinates.inp").write_text(
+        "42 14 0.00 0.00 0.00\n42 14 0.50 0.25 0.75\n")
+    (tmp_path / "pseudo.inp").write_text("42 Mo_ONCV_PBE-1.0.upf\n")
+    (tmp_path / "Mo_ONCV_PBE-1.0.upf").write_text("dummy\n")
+
+    _atoms, calc = read_dftfe(str(prm), dftfe_real="/nonexistent/dftfe")
+    assert calc.verbosity is None
+
+
+@pytest.mark.parametrize("value", ["0", "1", "4"])
+def test_verbosity_is_passed_through_as_an_int(tmp_path, value):
+    """Including 0, which is falsy and must not be mistaken for 'not set'."""
+    from dftfe_ase import read_dftfe
+
+    prm = tmp_path / "parameterFile.prm"
+    prm.write_text(DECK.replace("set VERBOSITY = 4", f"set VERBOSITY = {value}"))
+    (tmp_path / "domainVectors.inp").write_text(
+        "10.0 0.0 0.0\n0.0 10.0 0.0\n0.0 0.0 10.0\n")
+    (tmp_path / "coordinates.inp").write_text(
+        "42 14 0.00 0.00 0.00\n42 14 0.50 0.25 0.75\n")
+    (tmp_path / "pseudo.inp").write_text("42 Mo_ONCV_PBE-1.0.upf\n")
+    (tmp_path / "Mo_ONCV_PBE-1.0.upf").write_text("dummy\n")
+
+    _atoms, calc = read_dftfe(str(prm), dftfe_real="/nonexistent/dftfe")
+    assert calc.verbosity == int(value)
