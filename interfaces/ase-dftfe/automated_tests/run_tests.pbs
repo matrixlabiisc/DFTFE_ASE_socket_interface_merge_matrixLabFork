@@ -1,0 +1,99 @@
+#!/bin/bash
+# ---------------------------------------------------------------------
+# Copyright (c) 2017-2025 The Regents of the University of Michigan and DFT-FE
+# authors. Part of the DFT-FE code, released under LGPL v2.1 or later.
+# ---------------------------------------------------------------------
+#
+# @author Mehul Darak
+#
+# Aurora (PBS) runner for the ASE-DFTFE physics regression suite. The MATRIX
+# (SLURM) equivalent is run_tests.slurm; this is the same suite, re-homed.
+#
+#   qsub run_tests.pbs                  # compare against references.json
+#   qsub -v SEED=1 run_tests.pbs        # ALSO pin whatever is still null
+#
+# AGREE THE BUDGET BEFORE SUBMITTING. As written: 1 node x 1 h = 1 node-hour
+# max, charged to exaDFTnAI. DFTCalc2 is overdrawn -- never charge it.
+#
+# Two Aurora-specific facts are baked in and are not cosmetic:
+#
+#   * --no-device. The binaries below are CPU builds (no DFTFE_WITH_DEVICE).
+#     In dftfeWrapper::initialize() the DEVICE branch is inside an #ifdef, so
+#     use_device=true on a CPU build takes NEITHER branch: d_dftfeBasePtr is
+#     never created and the run dies with no useful message. The MATRIX
+#     references were seeded on GPU builds, so an energy pinned there is not
+#     guaranteed to reproduce here to 1e-10 Ha -- expect to look at any diff
+#     rather than assume a regression.
+#
+#   * MPIR_CVAR_ENABLE_GPU=0. Without it the MPI layer probes for GPU buffers
+#     on every transfer, which a CPU build never has.
+#
+# mpirun on Aurora is a symlink to Cray PALS mpiexec, so the `mpirun -np N`
+# command the case files build does resolve here.
+# ---------------------------------------------------------------------
+#PBS -A exaDFTnAI
+#PBS -q debug
+#PBS -l select=1
+#PBS -l walltime=01:00:00
+#PBS -l filesystems=flare:home
+#PBS -j oe
+#PBS -N ase_dftfe_tests
+
+set -uo pipefail
+
+BASE=/lus/flare/projects/DFTCalc2/Mehul/install_DFTFE
+ASE_DIR="$BASE/dftfe/src/interfaces/ase-dftfe"
+
+DFTFE_REAL="$BASE/dftfe/install/cpu_real/dftfe"
+DFTFE_COMPLEX="$BASE/dftfe/install/cpu_complex/dftfe"
+PSP_LIBRARY="$ASE_DIR/psp_library"
+
+NP="${NP:-8}"
+
+# ── Modules / environment ──────────────────────────────────────────────────
+module load boost
+export MPIR_CVAR_ENABLE_GPU=0
+export OMP_NUM_THREADS=1 OMP_PLACES=cores
+export DFTFE_NUM_THREADS=1 DEAL_II_NUM_THREADS=1
+export PYTHONPATH="$ASE_DIR/src:${PYTHONPATH:-}"
+export PYTHONUNBUFFERED=1
+PY=/home/phanim/claude-env/bin/python3
+
+JOB="${PBS_JOBID:-local}"; JOB="${JOB%%.*}"
+cd "${PBS_O_WORKDIR:-$ASE_DIR/automated_tests}" || exit 1
+
+echo "=========================================="
+echo "ASE-DFTFE Automated Test Suite (Aurora)"
+echo "Job ID   : $JOB"
+echo "Nodes    : $(wc -l < "${PBS_NODEFILE:-/dev/null}" 2>/dev/null || echo '?')"
+echo "Tasks    : $NP"
+echo "Host     : $(hostname)"
+echo "Started  : $(date -u)"
+echo "=========================================="
+
+for b in "$DFTFE_REAL" "$DFTFE_COMPLEX"; do
+    [[ -x "$b" ]] || { echo "[ERROR] missing binary: $b" >&2; exit 1; }
+    ls -l --time-style=+%F_%H:%M:%S "$b"
+done
+
+# Seeding rewrites references.json, so it must be asked for out loud.
+SEED_ARG=""
+if [[ "${SEED:-0}" == "1" ]]; then
+    echo "[WARN] SEED=1: null references in references.json will be OVERWRITTEN"
+    SEED_ARG="--seed"
+fi
+
+"$PY" test_suite.py \
+    --dftfe-real    "$DFTFE_REAL" \
+    --dftfe-complex "$DFTFE_COMPLEX" \
+    --psp-library   "$PSP_LIBRARY" \
+    --np            "$NP" \
+    --no-device \
+    $SEED_ARG \
+    ${TESTS:+--tests $TESTS} 2>&1 | tee "ase_tests_${JOB}.out"
+
+EXIT_CODE=${PIPESTATUS[0]}
+echo ""
+echo "Finished : $(date -u)"
+echo "Exit code: ${EXIT_CODE}"
+exit ${EXIT_CODE}
