@@ -141,7 +141,21 @@ def _extra_prm_entries(extra):
         elif "|||" in k:
             section, key = k.split("|||", 1)
         else:
-            spec = next((s for s in BY_KWARG.values() if s.prm_key == k), None)
+            matches = [s for s in BY_KWARG.values() if s.prm_key == k]
+            sections = {s.section for s in matches}
+            if len(sections) > 1:
+                # TOLERANCE and MAXIMUM ITERATIONS each exist in both `SCF
+                # parameters` and `Poisson problem parameters`. Picking the
+                # first match silently wrote one when the user meant the other
+                # -- the same silent wrong-subsection write this whole injection
+                # path was rewritten to eliminate. Make them say which.
+                raise ValueError(
+                    f"extra_prm key {k!r} is ambiguous: DFT-FE declares it in "
+                    f"{sorted(s or '(top level)' for s in sections)}. Name the "
+                    f"subsection explicitly, e.g. "
+                    f"{{({sorted(sections)[0]!r}, {k!r}): value}}."
+                )
+            spec = matches[0] if matches else None
             section, key = (spec.section or "", spec.prm_key) if spec else ("", k)
         out.append({"section": section or "", "key": key, "value": v})
     return out
