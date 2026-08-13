@@ -1,28 +1,41 @@
 {
-  "_comment": "Reference values for ASE-DFTFE automated tests. Energy in Hartree. null = not yet seeded (will be auto-populated on first run).",
+  "_comment": "Reference values for ASE-DFTFE automated tests. Energy in Hartree, forces in Ha/Bohr. null = NOT pinned: the suite FAILS on it. Seed deliberately with `test_suite.py --seed` on a binary you trust, never by accident.",
+  "_schema": "test_suite.py reads exactly two keys per case: 'energy_ha' (float) and 'forces_ha_per_bohr' (N x 3 list). 'forces_rmse_mev_per_ang' below is a FOSSIL of an older RMSE-based schema and is read by nothing; see the note on n2_nonperiodic.",
   "co2_nonperiodic": {
     "energy_ha": -37.649581372295614,
+    "forces_ha_per_bohr": null,
     "forces_rmse_mev_per_ang": null,
     "_source": "co2_gs_socket_merge_test.log"
   },
   "graphene_periodic": {
     "energy_ha": -11.401437698524642,
+    "forces_ha_per_bohr": null,
     "forces_rmse_mev_per_ang": null,
     "_source": "graphene_socket_test.log"
   },
   "al_bulk_periodic": {
     "energy_ha": -9.242132802264342,
+    "forces_ha_per_bohr": null,
     "forces_rmse_mev_per_ang": null,
     "_source": "al_bulk_socket_test.log"
   },
   "n2_nonperiodic": {
     "energy_ha": -20.641688948796197,
+    "forces_ha_per_bohr": null,
     "forces_rmse_mev_per_ang": 8694.968012,
-    "_source": "auto-seeded on first run"
+    "_source": "auto-seeded on first run",
+    "_note_forces_rmse": "Dead key, read by no code. 8694.97 meV/A is not an error-vs-reference: this case holds N2 at 2.6 Bohr = 1.376 A, ~25% beyond the 1.098 A equilibrium bond, where a several-eV/A restoring force is the correct physics. Do not 'fix' it; if it bothers you, delete it."
   },
   "relax_o2": {
     "energy_ha": -31.7647783703347,
+    "forces_ha_per_bohr": null,
     "forces_rmse_mev_per_ang": 1.159702,
-    "_source": "auto-seeded on first run"
+    "_source": "auto-seeded on first run",
+    "_note": "listed in test_suite.RUN_ONLY: completion is the assertion, values are not compared"
+  },
+  "al_slab_semiperiodic": {
+    "energy_ha": null,
+    "forces_ha_per_bohr": null,
+    "_source": "NOT SEEDED. Must be established with --seed on a real binary carrying the open-direction fix (dftfe/install/cpu_real), not invented."
   }
 }

@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+# ---------------------------------------------------------------------
+# Copyright (c) 2017-2025 The Regents of the University of Michigan and DFT-FE
+# authors. Part of the DFT-FE code, released under LGPL v2.1 or later.
+# ---------------------------------------------------------------------
+#
+# @author Mehul Darak
+#
 """
 ASE-DFTFE Automated Test Suite
 ================================
@@ -11,13 +18,21 @@ Usage:
         --dftfe-complex /path/to/build_gpu/release/complex/dftfe \\
         --psp-library   /path/to/psp_library \\
         --np 8 \\
+        [--no-device] \\
         [--tests co2_nonperiodic n2_nonperiodic ...]
 
-First-run behaviour
--------------------
-If a test's reference value in references.json is null, the computed
-value is saved as the new reference (auto-seeding) and the test is
-marked [SEEDED] rather than PASS/FAIL.
+Missing references
+------------------
+A reference of ``null`` (or an absent key) is a **FAILURE**, not a licence to
+invent one. It means nothing is pinned for that quantity, so the test cannot
+regress and reporting PASS would be a lie.
+
+Seeding a reference is therefore an explicit, deliberate act::
+
+    python test_suite.py ... --seed
+
+and should only ever be done on a binary you trust, from a run you have
+looked at. Without ``--seed`` this script never writes references.json.
 """
 
 import argparse
@@ -40,6 +55,7 @@ BINARY_KIND = {
     "co2_nonperiodic":  "real",
     "n2_nonperiodic":   "real",
     "relax_o2":         "real",
+    "al_slab_semiperiodic": "real",   # gamma-only: periodic in x/y, open along z
     "graphene_periodic": "complex",
     "al_bulk_periodic":  "complex",
 }
@@ -52,6 +68,8 @@ ALL_TESTS = list(BINARY_KIND.keys())
 
 CASES_DIR = os.path.join(os.path.dirname(__file__), "cases")
 REFS_FILE  = os.path.join(os.path.dirname(__file__), "references.json")
+
+_NO_REF_HINT = ("re-run with --seed on a trusted binary to pin it deliberately")
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -101,12 +119,16 @@ def run_suite(args):
     with open(REFS_FILE) as f:
         refs = json.load(f)
 
-    results   = {}
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_lines = [f"ASE-DFTFE Test Suite  —  {timestamp}", "=" * 60]
+    results    = {}
+    any_seeded = False
+    timestamp  = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_lines  = [f"ASE-DFTFE Test Suite  —  {timestamp}", "=" * 60]
+    if args.seed:
+        log_lines.append("--seed given: null references WILL be overwritten "
+                         "with this run's values.")
 
-    print(log_lines[0], flush=True)
-    print(log_lines[1], flush=True)
+    for line in log_lines:
+        print(line, flush=True)
 
     for name in tests:
         if name not in BINARY_KIND:
@@ -124,6 +146,7 @@ def run_suite(args):
                 dftfe_bin=dftfe_b,
                 psp_library=args.psp_library,
                 np_tasks=args.np,
+                use_device=args.use_device,
             )
         except Exception:
             tb = traceback.format_exc()
@@ -146,10 +169,17 @@ def run_suite(args):
         seeded = False
 
         if ref_energy is None:
-            refs[name]["energy_ha"] = energy_ha
-            seeded = True
-            energy_status = "SEEDED"
-            energy_note   = f"energy = {energy_ha:.10e} Ha  (saved as reference)"
+            if args.seed:
+                refs.setdefault(name, {})["energy_ha"] = energy_ha
+                seeded = any_seeded = True
+                energy_status = "SEEDED"
+                energy_note   = f"energy = {energy_ha:.10e} Ha  (saved as reference)"
+            else:
+                energy_status = "FAIL"
+                energy_note   = (
+                    f"energy = {energy_ha:.10e} Ha  |  ref = null  "
+                    f"|  NO ENERGY REFERENCE — nothing is pinned; {_NO_REF_HINT}"
+                )
         else:
             e_pass, e_diff = check_energy(energy_ha, ref_energy)
             energy_status  = "PASS" if e_pass else "FAIL"
@@ -163,10 +193,19 @@ def run_suite(args):
         force_note   = ""
         if forces_ha_per_bohr is not None:
             ref_forces_list = ref.get("forces_ha_per_bohr")
-            if seeded or ref_forces_list is None:
-                refs[name]["forces_ha_per_bohr"] = forces_ha_per_bohr.tolist()
-                force_status = "SEEDED"
-                force_note   = f"forces saved as reference ({forces_ha_per_bohr.shape[0]} atoms)"
+            if ref_forces_list is None or seeded:
+                if args.seed:
+                    refs.setdefault(name, {})["forces_ha_per_bohr"] = \
+                        forces_ha_per_bohr.tolist()
+                    any_seeded   = True
+                    force_status = "SEEDED"
+                    force_note   = f"forces saved as reference ({forces_ha_per_bohr.shape[0]} atoms)"
+                else:
+                    force_status = "FAIL"
+                    force_note   = (
+                        f"NO FORCE REFERENCE — 'forces_ha_per_bohr' is null or "
+                        f"absent; {_NO_REF_HINT}"
+                    )
             else:
                 ref_forces = np.array(ref_forces_list)
                 f_pass, max_diff, worst_atom, worst_comp = check_forces(forces_ha_per_bohr, ref_forces)
@@ -178,10 +217,12 @@ def run_suite(args):
                 )
 
         # ── Overall status ──
-        if seeded:
-            overall = "SEEDED"
-        elif energy_status == "FAIL" or force_status == "FAIL":
+        # FAIL wins over SEEDED: a pinned energy that regressed is still a
+        # regression even if this run happened to seed the forces beside it.
+        if energy_status == "FAIL" or force_status == "FAIL":
             overall = "FAIL"
+        elif seeded or force_status == "SEEDED":
+            overall = "SEEDED"
         else:
             overall = "PASS"
 
@@ -198,9 +239,11 @@ def run_suite(args):
         print(line, flush=True)
         log_lines.append(line)
 
-    # ── Save updated references if anything was seeded ──
-    with open(REFS_FILE, "w") as f:
-        json.dump(refs, f, indent=2)
+    # ── Save updated references, but ONLY if seeding was asked for and used ──
+    if any_seeded:
+        with open(REFS_FILE, "w") as f:
+            json.dump(refs, f, indent=2)
+        print(f"\nReferences updated: {REFS_FILE}", flush=True)
 
     # ── Summary ──
     summary = "\n" + "=" * 60 + "\nSUMMARY\n" + "=" * 60
@@ -227,7 +270,7 @@ def run_suite(args):
 
 # ── CLI ────────────────────────────────────────────────────────────────────
 
-def parse_args():
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(
         description="ASE-DFTFE Automated Test Suite"
     )
@@ -253,12 +296,28 @@ def parse_args():
         help="Number of MPI tasks (default: 8)",
     )
     parser.add_argument(
+        "--no-device",
+        dest="use_device",
+        action="store_false",
+        default=True,
+        help="Run on the host (USE GPU off). Required when --dftfe-real / "
+             "--dftfe-complex point at CPU-only builds: those have no DEVICE "
+             "branch, so use_device=True leaves DFT-FE with no solver at all.",
+    )
+    parser.add_argument(
+        "--seed",
+        action="store_true",
+        help="Write this run's values into references.json wherever the "
+             "reference is null. Without it, a null reference is a FAILURE "
+             "and references.json is never modified.",
+    )
+    parser.add_argument(
         "--tests",
         nargs="+",
         metavar="TEST",
         help=f"Subset of tests to run. Available: {ALL_TESTS}",
     )
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 if __name__ == "__main__":

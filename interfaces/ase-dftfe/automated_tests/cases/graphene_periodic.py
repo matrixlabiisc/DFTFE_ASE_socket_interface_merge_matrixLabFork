@@ -1,3 +1,10 @@
+# ---------------------------------------------------------------------
+# Copyright (c) 2017-2025 The Regents of the University of Michigan and DFT-FE
+# authors. Part of the DFT-FE code, released under LGPL v2.1 or later.
+# ---------------------------------------------------------------------
+#
+# @author Mehul Darak
+#
 """
 Test case: Graphene (2D periodic, k-points → complex binary).
 Mirrors exactly: examples/graphene_gs.py
@@ -6,10 +13,11 @@ import os
 import numpy as np
 from ase import Atoms
 from ase.units import Bohr, Hartree
-from dftfe import DFTFE
+from dftfe_ase import DFTFE
 
 
-def run(dftfe_bin: str, psp_library: str, np_tasks: int = 8):
+def run(dftfe_bin: str, psp_library: str, np_tasks: int = 8,
+        use_device: bool = True):
     # --- geometry (exactly as in examples/graphene_gs.py) ---
     cell_bohr = np.array([
         [ 4.65428900,  0.00000000, 0.0],
@@ -48,7 +56,7 @@ def run(dftfe_bin: str, psp_library: str, np_tasks: int = 8):
         npkpt=8,
         xc='GGA-PBE',
         compute_forces=True,
-        use_device=True,
+        use_device=use_device,
         verbosity=1,
         log_file="test_graphene_periodic.log",
     )
