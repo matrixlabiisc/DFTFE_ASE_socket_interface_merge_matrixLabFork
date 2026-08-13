@@ -49,6 +49,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 
 import numpy as np
 from ase.units import Bohr
@@ -58,6 +59,7 @@ ROOT = os.path.abspath(os.path.join(HERE, "..", "..", ".."))   # dftfe/src
 sys.path.insert(0, os.path.join(HERE, "..", "src"))
 
 from dftfe_ase.backends.file import FileBackend          # noqa: E402
+from dftfe_ase.geometry import rigid_shift               # noqa: E402
 from dftfe_ase.params import to_prm_entries              # noqa: E402
 
 TEMPLATE = os.path.join(ROOT, "helpers", "parameterFile.prm")
@@ -180,9 +182,24 @@ def build_deck(work, atoms, kwargs, psp_library, compute_forces=True):
 
     np.savetxt(os.path.join(work, "domainVectors.inp"), cell_bohr, fmt="%.16f")
 
+    # The native arm must compute at the geometry the SOCKET arm actually sends,
+    # otherwise the two are solving different structures and the comparison is
+    # meaningless. dftfeWrapper::reinit does two things to incoming positions,
+    # and both have to be mirrored here:
+    #
+    #   * open axes    -- rigid placement inside the cell (geometry.rigid_shift);
+    #                     zero unless a case is deliberately out of cell.
+    #   * periodic axes -- fold into [0,1]. The native file path does NOT wrap;
+    #                     it asserts (dft.cc:1101). al_slab_semiperiodic has a
+    #                     fractional x of -0.1667 straight out of fcc111() and
+    #                     aborted here until this was added.
     pbc = atoms.get_pbc()
+    pos_bohr = pos_bohr + rigid_shift(pos_bohr, cell_bohr, pbc)
     if pbc.any():
         rows = pos_bohr @ np.linalg.inv(cell_bohr)
+        for i in range(3):
+            if pbc[i]:
+                rows[:, i] = np.mod(rows[:, i], 1.0)
     else:
         rows = pos_bohr - cell_bohr.sum(axis=0) / 2.0   # origin at domain centre
     with open(os.path.join(work, "coordinates.inp"), "w") as fh:
@@ -224,6 +241,10 @@ def main():
     p.add_argument("--tests", nargs="*")
     p.add_argument("--dry-run", action="store_true",
                    help="write the decks and stop; run nothing")
+    p.add_argument("--case-timeout", type=int, default=900,
+                   help="seconds per native run before skipping it (default 900)")
+    p.add_argument("--skip-existing", action="store_true",
+                   help="leave cases that already carry a native-pgd reference")
     args = p.parse_args()
 
     sys.path.insert(0, HERE)
@@ -238,6 +259,11 @@ def main():
         binary = bins[kind]
         work = os.path.join(args.workroot, name)
         print(f"\n=== {name} ({kind}) ===", flush=True)
+
+        if args.skip_existing and (refs.get(name, {}).get("provenance") or {}
+                                   ).get("generator") == "native-pgd":
+            print("  already has a native pGD reference; skipping")
+            continue
 
         atoms, kwargs = capture(name)
         print(f"  captured {len(atoms)} atoms, pbc={list(atoms.get_pbc())}, "
@@ -256,19 +282,37 @@ def main():
 
         st = os.stat(binary)
         cmd = ["mpirun", "-np", str(args.np), binary, "parameterFile.prm"]
-        proc = subprocess.run(cmd, cwd=work, capture_output=True, text=True)
+        t0 = time.time()
+        try:
+            proc = subprocess.run(cmd, cwd=work, capture_output=True, text=True,
+                                  timeout=args.case_timeout)
+        except subprocess.TimeoutExpired as exc:
+            # TimeoutExpired carries RAW BYTES even under text=True -- decoding
+            # happens after communicate() returns, which it never did. Writing
+            # str + bytes here raised TypeError and killed the whole script,
+            # losing the three cases queued behind this one (job 8753495).
+            def _txt(v):
+                return v.decode(errors="replace") if isinstance(v, bytes) else (v or "")
+            open(os.path.join(work, "native.out"), "w").write(
+                _txt(exc.stdout) + "\n" + _txt(exc.stderr))
+            print(f"  TIMEOUT after {args.case_timeout}s -- skipped. Raise "
+                  f"--case-timeout, or check this case's mesh: it is the "
+                  f"expensive knob (relax_o2 uses MESH SIZE 0.6 / order 7).")
+            continue
+        elapsed = time.time() - t0
         text = proc.stdout + "\n" + proc.stderr
         open(os.path.join(work, "native.out"), "w").write(text)
 
         try:
             energy, forces = FileBackend._parse(text, natoms=len(atoms))
         except Exception as exc:
-            print(f"  FAILED to parse native output: {exc}")
+            print(f"  FAILED to parse native output after {elapsed:.0f}s: {exc}")
             print(f"  see {work}/native.out")
             continue
 
         print(f"  native energy = {energy:.12f} Ha"
-              + (f", {len(forces)} force rows" if forces else ", no forces parsed"))
+              + (f", {len(forces)} force rows" if forces else ", no forces parsed")
+              + f"  [{elapsed:.0f}s]")
         refs[name] = {
             "energy_ha": energy,
             "forces_ha_per_bohr": forces,
@@ -281,10 +325,12 @@ def main():
                 "use_device": False,
             },
         }
-
-    if not args.dry_run:
+        # Written after EVERY case, not at the end. The first run of this script
+        # completed co2 and n2, then hit the job walltime on relax_o2 -- and
+        # discarded both, because the only write was after the loop.
         json.dump(refs, open(REFS_FILE, "w"), indent=2)
-        print(f"\nwrote {REFS_FILE}")
+        print(f"  -> {name} saved to references.json")
+
     return 0
 
 
