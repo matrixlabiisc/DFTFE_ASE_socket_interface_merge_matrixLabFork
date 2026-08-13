@@ -197,6 +197,8 @@ class DFTFE(Calculator):
         # axes, held fixed for the whole trajectory. See _placed_coords().
         self._open_shift = None
         self._open_shift_cell = None
+        self._open_shift_natoms = None
+        self._stress_shift_warned = False
 
         # Pseudopotential encoding: dict -> "DICT|El:path|..." ; else path/string.
         if isinstance(psp_path, dict):
@@ -300,10 +302,27 @@ class DFTFE(Calculator):
         steps whose energies are compared would no longer sit at the same place
         in their own vacuum. A fixed offset keeps the frame constant.
 
-        It is recomputed only if the cached offset stops being enough -- the
-        cell changed, or a later step genuinely wandered out of the box. Both
-        are worth the log line they produce, because along an open direction
-        they mean the vacuum padding is too thin.
+        Once frozen it is never revised, and both ways it could go stale raise
+        rather than silently adjusting:
+
+        * **The cell changed.** DFT-FE would not pick it up anyway --
+          ``socket_interface.cc`` handles displacements per step but explicitly
+          omits cell deformation ("omitting complex cell deformation logic"), so
+          the solver still holds the cell from ``reinit``. Re-deriving an offset
+          against ASE's new cell would place atoms for a box DFT-FE does not
+          have.
+        * **An atom left the cell mid-run.** Re-centring here is not a small
+          correction: the offset moves by roughly the distance the system
+          drifted, and ``moveAtoms.cc:244`` triggers a full remesh once any
+          displacement exceeds ``break1 = 1.0`` Bohr. The whole system would
+          jump through the mesh in one "relaxation step", putting that energy on
+          a different mesh from every energy before it -- exactly the comparison
+          the freeze exists to protect. For a NEB sharing one calculator it
+          would give images on different mesh placements and an egg-box error in
+          the barrier.
+
+        Both mean the vacuum padding is too thin for the trajectory being run,
+        which is the user's call to make, not ours to paper over.
 
         ``self.atoms`` is never mutated: ASE (and any optimizer holding it) owns
         those positions, and they must stay continuous.
@@ -312,21 +331,45 @@ class DFTFE(Calculator):
         cell = self.atoms.get_cell()[:]
         pbc = self.atoms.get_pbc()
 
-        if not pbc.all():
-            cached = self._open_shift
-            if cached is not None and np.array_equal(cell, self._open_shift_cell):
-                if not geometry.needs_shift(positions + cached, cell, pbc):
-                    return positions + cached
-                log.warning(
-                    "atoms moved outside the cell along a non-periodic direction "
-                    "during the run; re-centring. The vacuum padding is marginal."
-                )
-            placed, shift = geometry.place_inside(positions, cell, pbc)
+        if pbc.all():
+            return positions
+
+        cached = self._open_shift
+        if cached is None:
+            placed, shift = geometry.place_inside(positions, cell, pbc,
+                                                  context=self._log_file)
             self._open_shift = shift
             self._open_shift_cell = cell.copy()
+            self._open_shift_natoms = len(positions)
             return placed
 
-        return positions
+        if not np.array_equal(cell, self._open_shift_cell):
+            raise DFTFEError(
+                "the cell changed during a run with a non-periodic direction. "
+                "DFT-FE does not adopt a new cell over the socket -- it still "
+                "holds the one from reinit -- so anything computed after this "
+                "point would use the old box. Variable-cell relaxation is not "
+                "supported on this path; run it as separate calculators, one "
+                "fixed cell each."
+            )
+        if len(positions) != self._open_shift_natoms:
+            raise DFTFEError(
+                f"atom count changed ({self._open_shift_natoms} -> "
+                f"{len(positions)}) on a calculator holding a placement offset. "
+                "Use a fresh calculator per system rather than reusing one."
+            )
+
+        if not geometry.needs_shift(positions + cached, cell, pbc):
+            return positions + cached
+
+        raise DFTFEError(
+            "an atom moved outside the cell along a non-periodic direction "
+            "during the run. Re-centring now would translate the whole system "
+            "far enough to force a remesh (moveAtoms.cc break1 = 1.0 Bohr), so "
+            "this step's energy would sit on a different mesh from the previous "
+            "steps and could not be compared with them. Add vacuum along the "
+            "open direction and restart."
+        )
 
     # ── ASE Calculator API ─────────────────────────────────────────────
     def calculate(self, atoms=None, properties=("energy",), system_changes=all_changes):
@@ -348,6 +391,26 @@ class DFTFE(Calculator):
         # the whole system (see geometry.py). Distances, energy and forces are
         # invariant under it; only the placement in the vacuum changes.
         coords = self._placed_coords()
+
+        # Forces are translation-invariant, so the placement offset needs no
+        # undoing. Stress is a different matter and nobody has checked it: an
+        # affine strain acts about the cell origin, so where a slab sits along
+        # the open axis plausibly enters the zz/xz/yz components. CELL STRESS is
+        # only forced off when ALL axes are open (dftfeWrapper.cc:834), so a
+        # semi-periodic slab keeps it on -- and that is exactly the case that
+        # can carry a nonzero offset. Say so once rather than quietly returning
+        # a number of unproven meaning.
+        if (want_stress and self._open_shift is not None
+                and self._open_shift.any() and not self._stress_shift_warned):
+            self._stress_shift_warned = True
+            log.warning(
+                "stress requested on a cell with a non-periodic direction whose "
+                "atoms were rigidly translated by (%.4f, %.4f, %.4f) A. Energy "
+                "and forces are invariant under that translation; stress has not "
+                "been verified to be. Treat the stress from this run as "
+                "unvalidated, or place the atoms inside the cell yourself.",
+                *self._open_shift,
+            )
 
         request = {
             "cmd": "run",

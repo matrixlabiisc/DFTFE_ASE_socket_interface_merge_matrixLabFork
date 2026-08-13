@@ -178,6 +178,95 @@ def test_offset_is_frozen_across_steps():
     np.testing.assert_allclose(calc._placed_coords(), first, atol=1e-12)
 
 
+# ── degenerate input ───────────────────────────────────────────────────────
+
+
+def test_zero_length_cell_vector_is_named_not_a_linalg_error():
+    """Atoms(cell=[a, b, 0]) is legal ASE and is what you hold pre-center()."""
+    with pytest.raises(OpenDirectionError, match="zero length"):
+        needs_shift(np.array([[0.0, 0.0, 0.0]]),
+                    [[3, 0, 0], [0, 3, 0], [0, 0, 0]], [True, True, False])
+
+
+def test_near_zero_cell_vector_is_rejected_not_silently_used():
+    """The dangerous one: inv() does not raise, it returns garbage."""
+    with pytest.raises(OpenDirectionError):
+        rigid_shift(np.array([[0.0, 0.0, 0.0]]),
+                    [[3, 0, 0], [0, 3, 0], [0, 0, 1e-12]], [True, True, False])
+
+
+def test_coplanar_cell_is_rejected():
+    with pytest.raises(OpenDirectionError, match="singular"):
+        needs_shift(np.array([[0.0, 0.0, 0.0]]),
+                    [[1, 0, 0], [0, 1, 0], [1, 1, 0]], [True, True, False])
+
+
+def test_empty_atoms_is_not_an_error():
+    assert needs_shift(np.zeros((0, 3)), CELL, SLAB_PBC) == []
+    assert not rigid_shift(np.zeros((0, 3)), CELL, SLAB_PBC).any()
+
+
+def test_tight_but_placeable_system_is_placed_not_rejected():
+    """Threshold must be DFT-FE's bound, not the clearance we would prefer.
+
+    Span 0.999 of a 100 A cell centres to 5e-4 fractional margin -- 500x
+    DFT-FE's 1e-6 requirement. Rejecting it told the user to enlarge a cell
+    that was already big enough.
+    """
+    cell = np.diag([100.0, 100.0, 100.0])
+    pos = np.array([[50.0, 50.0, -0.05], [50.0, 50.0, 99.85]])
+    placed, shift = place_inside(pos, cell, [True, True, False])
+    assert shift[2] != 0.0
+    assert not needs_shift(placed, cell, [True, True, False])
+
+
+# ── the frozen offset refuses to drift ─────────────────────────────────────
+
+
+def test_cell_change_raises_because_dftfe_never_adopts_it():
+    """socket_interface.cc omits cell deformation; the solver keeps reinit's cell."""
+    from dftfe_ase.backends.socket import DFTFEError
+
+    slab = _out_of_cell_slab()
+    calc = _calc_for(slab)
+    calc._placed_coords()
+
+    cell = slab.get_cell()[:]
+    cell[2, 2] += 0.3
+    slab.set_cell(cell)
+    with pytest.raises(DFTFEError, match="does not adopt a new cell"):
+        calc._placed_coords()
+
+
+def test_atom_leaving_the_cell_midrun_raises_rather_than_recentring():
+    """Re-centring would move the system > break1 = 1.0 Bohr and force a remesh,
+    putting this energy on a different mesh from every earlier one."""
+    from dftfe_ase.backends.socket import DFTFEError
+
+    slab = _out_of_cell_slab()
+    calc = _calc_for(slab)
+    calc._placed_coords()
+
+    # Enough to clear the frozen +12.66 A offset and exit the bottom face.
+    slab.positions[:, 2] -= 14.0
+    with pytest.raises(DFTFEError, match="remesh"):
+        calc._placed_coords()
+
+
+def test_atom_count_change_raises_instead_of_reusing_the_offset():
+    from dftfe_ase.backends.socket import DFTFEError
+
+    slab = _out_of_cell_slab()
+    calc = _calc_for(slab)
+    calc._placed_coords()
+
+    smaller = slab[:4]
+    smaller.pbc = slab.get_pbc()
+    calc.atoms = smaller
+    with pytest.raises(DFTFEError, match="atom count changed"):
+        calc._placed_coords()
+
+
 def test_fully_periodic_system_is_passed_through_untouched():
     bulk = Atoms("Al", positions=[[0.0, 0.0, 0.0]],
                  cell=np.diag([4.0, 4.0, 4.0]), pbc=True)

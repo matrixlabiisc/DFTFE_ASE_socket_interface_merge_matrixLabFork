@@ -119,30 +119,56 @@ def test_every_physics_parameter_is_sentinel_guarded():
     )
 
 
+# Request fields whose parse default is a REAL default, not an absent-marker:
+# the driver acts on the value directly and no wrapper guard tests it.
+NON_SENTINEL_FIELDS = {
+    "keep_scratch", "use_device", "compute_forces", "compute_stress",
+    "prm_overrides",
+}
+
+
 @needs_cxx
 def test_request_defaults_match_wrapper_sentinels():
-    """The value used for an absent JSON field must be the value guarded on."""
+    """Every absent-field default must be a value some injection guard tests.
+
+    Direction matters here. Checking guards-are-known-literals is nearly
+    vacuous: the four sentinels are each shared by many parameters, so breaking
+    one parameter leaves its literal in the set and the test still passes.
+    Changing socket_interface.cc's `mesh_size` default from -1.0 to 0.0, for
+    instance, makes an unset mesh_size arrive as 0.0, fire
+    `if (meshSize != -1.0)`, and inject `MESH SIZE AROUND ATOM=0` -- a silently
+    wrong run that the old assertion could not see, because -1.0 was still in
+    use by fermi_temp and four others.
+
+    Checking the other way round catches it: 0.0 is not a literal any guard
+    tests, so the parameter can never be recognised as unset.
+    """
     _, body = _reinit_body()
     socket = SOCKET_CC.read_text()
 
-    # socket_interface.cc: parse_scalar<T>(json, "name", DEFAULT)
-    defaults = dict(
-        re.findall(r'parse_(?:scalar<[^>]+>|string)\(json,\s*"(\w+)",\s*([^)]+)\)', socket)
-    )
-    sentinels = {v.strip() for v in defaults.values()}
-    sentinels.discard("false")  # keep_scratch: a real default, not a sentinel
-
-    # Only guards that actually wrap an injection; the function also contains
-    # ordinary control flow (mpi_comm_parent != MPI_COMM_NULL, and so on).
     guarded_against = {
-        m.group(1)
+        m.group(1).strip()
         for m in re.finditer(r"if \(\w+ != ([^)]+)\)", body)
         if "applyPrm" in body[m.end() : m.end() + 400]
     }
-    stray = {s for s in guarded_against if s not in sentinels}
-    assert not stray, (
-        f"wrapper guards against value(s) no request field ever defaults to: {sorted(stray)}. "
-        "The guard can never fire, so the parameter is always injected."
+    assert guarded_against, "found no injection guards at all; the regex is stale"
+
+    defaults = re.findall(
+        r'parse_(?:scalar<[^>]+>|string)\(json,\s*"(\w+)",\s*([^)]+)\)', socket
+    )
+    assert defaults, "found no request fields at all; the regex is stale"
+
+    unrecognisable = {
+        (field, value.strip())
+        for field, value in defaults
+        if field not in NON_SENTINEL_FIELDS and value.strip() not in guarded_against
+    }
+    assert not unrecognisable, (
+        f"request field(s) default to a value no injection guard tests: "
+        f"{sorted(unrecognisable)}. An unset kwarg would arrive as that value, "
+        "pass the guard, and be injected into the .prm as if the user had asked "
+        "for it. Add the field to NON_SENTINEL_FIELDS only if the driver really "
+        "does consume the value directly."
     )
 
 
