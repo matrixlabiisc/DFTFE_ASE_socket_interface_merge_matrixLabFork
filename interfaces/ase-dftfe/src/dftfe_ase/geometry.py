@@ -25,16 +25,41 @@ puts the bottom layer at exactly ``z = 0``, which is fractional ``0.0``, which
 is outside the open interval by DFT-FE's reckoning -- and the abort happens
 seconds into a queued job.
 
-There is exactly one repair that is not a lie about the physics: translate
+There is exactly one repair that is not a lie about the structure: translate
 **every atom by the same vector**. A rigid translation leaves every interatomic
-distance unchanged, so the energy and all forces are unchanged; only the
-system's placement inside its own vacuum moves. That is the operation this
-module computes. What it deliberately does *not* do is fold atoms individually
-along an open axis -- that would tear the slab in half.
+distance exactly unchanged; only the system's placement inside its own vacuum
+moves. That is the operation this module computes. What it deliberately does
+*not* do is fold atoms individually along an open axis -- that would tear the
+slab in half.
 
 The shift is chosen to centre the atoms, which is the placement with the most
 clearance from both faces, and is where DFT-FE itself puts the system at the end
 of setup (``internaldft::convertToCellCenteredCartesianCoordinates``).
+
+**A rigid translation is not numerically free, and it is important not to claim
+that it is.** The structure is invariant; the *computed* energy is not. A
+finite-element mesh is fixed in the cell, so moving the system through it moves
+the discretisation error (the egg-box effect), and along an open axis the
+Dirichlet condition at the cell face moves relative to the atoms as well.
+
+Measured, on an 8-atom Al(111) slab in a 24 A cell, translating 2 A along the
+open axis with both placements strictly inside (job 8753281):
+
+    dE          5.487e-05 Ha   (1.49 meV)
+    max |dF|    1.127e-05 Ha/Bohr
+    max |dS|    1.424e-08 Ha/Bohr^3   (2.0e-04 relative)
+
+That is not SCF noise: tightening the SCF tolerance 100x (1e-4 -> 1e-6) moved dE
+by 5.0e-09 Ha, four orders of magnitude smaller than dE itself.
+
+Two consequences, both load-bearing:
+
+* **Never compare energies computed at different placements.** This is why the
+  calculator derives the offset once and freezes it for the trajectory, and why
+  it raises rather than silently re-centring partway through.
+* Centring is still the right choice -- it maximises clearance from both faces
+  and matches where DFT-FE puts the system anyway -- but it is a *choice of
+  frame*, not a no-op, and every energy in a run must share it.
 """
 
 from __future__ import annotations
@@ -171,8 +196,11 @@ def place_inside(positions, cell, pbc, *, context="", unit="A"):
         return positions, shift
     log.warning(
         "%satoms lay outside the cell along a non-periodic direction; translating "
-        "all of them rigidly by (%.4f, %.4f, %.4f) %s to centre them. "
-        "Interatomic distances, energy and forces are unchanged.",
+        "all of them rigidly by (%.4f, %.4f, %.4f) %s to centre them. The "
+        "structure is unchanged -- every interatomic distance is preserved "
+        "exactly -- but the computed energy is placement-dependent at the ~1e-5 "
+        "Ha level (the FE mesh is fixed in the cell), so this run's energies are "
+        "comparable with each other and NOT with a run at a different placement.",
         f"{context}: " if context else "", *shift, unit,
     )
     return positions + shift, shift

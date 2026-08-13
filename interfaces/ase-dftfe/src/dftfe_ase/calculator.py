@@ -406,23 +406,27 @@ class DFTFE(Calculator):
         # invariant under it; only the placement in the vacuum changes.
         coords = self._placed_coords()
 
-        # Forces are translation-invariant, so the placement offset needs no
-        # undoing. Stress is a different matter and nobody has checked it: an
-        # affine strain acts about the cell origin, so where a slab sits along
-        # the open axis plausibly enters the zz/xz/yz components. CELL STRESS is
-        # only forced off when ALL axes are open (dftfeWrapper.cc:834), so a
-        # semi-periodic slab keeps it on -- and that is exactly the case that
-        # can carry a nonzero offset. Say so once rather than quietly returning
-        # a number of unproven meaning.
+        # Measured, not assumed (job 8753281): a rigid translation along an open
+        # axis is NOT numerically free. The mesh is fixed in the cell, so moving
+        # the system through it moves the discretisation error. On an 8-atom Al
+        # slab shifted 2 A: dE 5.5e-05 Ha, max|dF| 1.1e-05 Ha/Bohr, and stress
+        # 2.0e-04 relative -- the largest relative effect of the three. Not SCF
+        # noise; a 100x tighter tolerance moved dE by 5e-09 Ha.
+        #
+        # Stress is called out separately because CELL STRESS is only forced off
+        # when ALL axes are open (dftfeWrapper.cc:834), so a semi-periodic slab
+        # keeps it on -- exactly the case that can carry an offset -- and it is
+        # the component most sensitive to where the system sits.
         if (want_stress and self._open_shift is not None
                 and self._open_shift.any() and not self._stress_shift_warned):
             self._stress_shift_warned = True
             log.warning(
                 "stress requested on a cell with a non-periodic direction whose "
-                "atoms were rigidly translated by (%.4f, %.4f, %.4f) A. Energy "
-                "and forces are invariant under that translation; stress has not "
-                "been verified to be. Treat the stress from this run as "
-                "unvalidated, or place the atoms inside the cell yourself.",
+                "atoms were rigidly translated by (%.4f, %.4f, %.4f) A. Stress is "
+                "measurably placement-dependent (~2e-4 relative for a 2 A shift), "
+                "more so than energy or forces. It is consistent within this run, "
+                "but do not compare it against a run whose atoms sit elsewhere in "
+                "the cell.",
                 *self._open_shift,
             )
 
