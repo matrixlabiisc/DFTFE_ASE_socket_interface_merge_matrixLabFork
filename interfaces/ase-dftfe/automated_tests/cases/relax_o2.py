@@ -62,7 +62,19 @@ def run(dftfe_bin: str, psp_library: str, np_tasks: int = 8,
     opt = BFGS(atoms, logfile="test_relax_o2_opt.log")
     opt.run(fmax=0.01)
 
+    # The relaxed energy is pinned like any other, not merely run-only. At fixed
+    # binary, rank count and device -- which the suite's provenance gate now
+    # enforces -- BFGS is deterministic: identical forces give an identical step
+    # sequence and an identical final geometry. So this case pins the whole
+    # multi-step path (persistent socket, density reuse across steps, optimizer
+    # round-trip), which a single-point case cannot reach.
+    #
+    # nsteps is reported alongside because it is the most sensitive signal here.
+    # A change that perturbs forces below the energy tolerance can still move the
+    # step count, and that shows up before the energy does.
     energy_ha = atoms.get_potential_energy() / Hartree
     forces_ha_per_bohr = atoms.get_forces() / (Hartree / Bohr)
+    print(f"[relax_o2] converged in {opt.get_number_of_steps()} BFGS steps",
+          flush=True)
 
     return energy_ha, forces_ha_per_bohr, None

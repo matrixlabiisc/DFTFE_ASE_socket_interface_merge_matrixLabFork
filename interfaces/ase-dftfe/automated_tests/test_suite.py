@@ -60,9 +60,12 @@ BINARY_KIND = {
     "al_bulk_periodic":  "complex",
 }
 
-# Tests that only check successful completion — no energy/force comparison.
-# (Relaxation final geometry depends on optimizer path, so exact values vary.)
-RUN_ONLY = {"relax_o2"}
+# Nothing is run-only any more. relax_o2 used to be, on the theory that a
+# relaxed energy is too path-dependent to pin at 1e-10 Ha -- but that is only
+# true across configurations, and the provenance gate now rules those out.
+# Within one configuration BFGS is deterministic, so leaving it unpinned was
+# giving up the only multi-step coverage the suite has.
+RUN_ONLY = set()
 
 ALL_TESTS = list(BINARY_KIND.keys())
 
@@ -83,6 +86,43 @@ def load_case(name: str):
     mod  = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod.run
+
+
+def provenance(args, kind: str) -> dict:
+    """What must be identical for the 1e-10 Ha tolerance to be meaningful.
+
+    1e-10 Ha is a determinism bar, not a physics bar, and DFT-FE is only that
+    reproducible against *itself in the same configuration*. Measured on this
+    project (PROJECT.md 5.7): a 4x rank change moves the energy by 6.4e-9 Ha and
+    forces by ~5 digits -- 60x and 1000x outside the tolerances here, with
+    nothing wrong. Those are MPI reduction-order differences, not regressions.
+
+    So a reference is only comparable to a run that shares its binary, its rank
+    count and its device. Recording that with the number is what lets the suite
+    tell "the code changed" apart from "you ran it differently", instead of
+    reporting the second as the first.
+    """
+    binary = {"real": args.dftfe_real, "complex": args.dftfe_complex}[kind]
+    try:
+        st = os.stat(binary)
+        stamp = f"{st.st_size}:{int(st.st_mtime)}"
+    except OSError:
+        stamp = "unknown"
+    return {
+        "binary": os.path.abspath(binary),
+        "binary_stamp": stamp,
+        "np": args.np,
+        "use_device": bool(args.use_device),
+    }
+
+
+def provenance_mismatch(ref: dict, now: dict):
+    """Fields that differ between the reference's configuration and this run."""
+    old = ref.get("provenance")
+    if not old:
+        return None  # pre-provenance reference; treated as unverifiable
+    return [k for k in ("binary", "binary_stamp", "np", "use_device")
+            if old.get(k) != now.get(k)] or []
 
 
 def check_energy(computed: float, ref: float) -> tuple:
@@ -155,6 +195,31 @@ def run_suite(args):
             results[name] = {"status": "FAIL", "reason": "exception", "traceback": tb}
             log_lines.append(msg)
             continue
+
+        # ── provenance gate ──
+        # Checked before the numbers, because comparing across configurations
+        # produces a FAIL that says "regression" when it means "different rank
+        # count". At 1e-10 Ha that is not a corner case, it is the common case.
+        now_prov = provenance(args, kind)
+        drift = provenance_mismatch(ref, now_prov)
+        if args.seed:
+            refs.setdefault(name, {})["provenance"] = now_prov
+        elif drift:
+            old = ref["provenance"]
+            detail = "; ".join(f"{k}: ref {old.get(k)!r} vs now {now_prov.get(k)!r}"
+                               for k in drift)
+            line = (f"[MISMATCH] {name}\n  reference was produced by a different "
+                    f"configuration -- {detail}\n  Not compared: DFT-FE reproduces "
+                    f"itself to 1e-10 Ha only at fixed binary/ranks/device (a 4x "
+                    f"rank change alone moves the energy 6.4e-9 Ha). Re-seed for "
+                    f"this configuration, or run at the recorded one.")
+            print(line, flush=True)
+            log_lines.append(line)
+            results[name] = {"status": "MISMATCH", "drift": drift}
+            continue
+        elif drift is None and ref.get("energy_ha") is not None:
+            log_lines.append(f"  note: {name} reference predates provenance "
+                             f"tracking; its configuration is unverifiable.")
 
         # ── RUN_ONLY: just check it didn't crash ──
         if name in RUN_ONLY:
