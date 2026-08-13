@@ -85,12 +85,21 @@ class FileBackend(Backend):
     # ── coordinates.inp writer (matches DFT-FE convention) ──────────────
     def _write_coordinates(self, work, coords_bohr, cell_bohr, pbc):
         coords = np.asarray(coords_bohr, float)
+        cell = np.asarray(cell_bohr, float)
         periodic = bool(np.any(pbc))
         if periodic:
-            frac = coords @ np.linalg.inv(np.asarray(cell_bohr, float))  # cell rows = vectors
-            rows = frac
+            rows = coords @ np.linalg.inv(cell)  # cell rows = vectors
         else:
-            rows = coords  # Cartesian Bohr
+            # Cartesian Bohr measured from the DOMAIN CENTRE, not the corner.
+            # dft.cc prints this branch under "Cartesian coordinates of atoms
+            # (origin at center of domain)" and uses atomLocations verbatim --
+            # convertToCellCenteredCartesianCoordinates() is only called on the
+            # periodic path. dftfeWrapper::reinit writes the same frame, shifting
+            # by -sum(cell)/2, and io.read_dftfe_atoms undoes exactly that on the
+            # way back. Writing corner-origin here put every atom half a cell
+            # diagonal away from where the caller meant, which for a molecule
+            # centred in its box lands it outside the domain entirely.
+            rows = coords - cell.sum(axis=0) / 2.0
         with open(os.path.join(work, "coordinates.inp"), "w") as fh:
             for (z, val), r in zip(self._z_val, rows):
                 fh.write(f"{z} {val} {r[0]:.14e} {r[1]:.14e} {r[2]:.14e}\n")
