@@ -50,6 +50,7 @@ activated with the generic `.prm` injector. Any param not listed can still be pa
 | `use_gpudirect_mpi_allreduce` | `USE GPUDIRECT MPI ALL REDUCE` | GPU | bool | planned |  |
 | `use_dccl` | `USE DCCL` | GPU | bool | planned |  |
 | `use_elpa_gpu_kernel` | `USE ELPA GPU KERNEL` | GPU | bool | planned |  |
+| `mem_opt_mode` | `MEM OPT MODE` | (top-level) | bool | planned | lower peak memory, marginal slowdown; unset => false for GS |
 | `self_potential_radius` | `SELF POTENTIAL RADIUS` | Boundary conditions | float | planned |  |
 | `polynomial_order_electrostatics` | `POLYNOMIAL ORDER ELECTROSTATICS` | Finite element mesh parameters | int | planned |  |
 | `poisson_tolerance` | `TOLERANCE` | Poisson problem parameters | float | planned | distinct from `tolerance` (SCF); same key, different subsection |
@@ -57,6 +58,9 @@ activated with the generic `.prm` injector. Any param not listed can still be pa
 | `helmholtz_tolerance` | `ABSOLUTE TOLERANCE HELMHOLTZ` | Helmholtz problem parameters | float | planned |  |
 | `helmholtz_max_iterations` | `MAXIMUM ITERATIONS HELMHOLTZ` | Helmholtz problem parameters | int | planned |  |
 | `kerker_mixing_parameter` | `KERKER MIXING PARAMETER` | SCF parameters | float | planned |  |
+| `adapt_anderson_mixing_parameter` | `ADAPT ANDERSON MIXING PARAMETER` | SCF parameters | bool | planned | DFT-FE default false = hold `scf_mixing` fixed |
+| `resta_fermi_wavevector` | `RESTA FERMI WAVEVECTOR` | SCF parameters | float | planned | only read by MIXING METHOD=ANDERSON_WITH_RESTA |
+| `resta_screening_length` | `RESTA SCREENING LENGTH` | SCF parameters | float | planned | only read by MIXING METHOD=ANDERSON_WITH_RESTA |
 | `compute_energy_each_iter` | `COMPUTE ENERGY EACH ITER` | SCF parameters | bool | planned |  |
 | `cheby_degree_scaling_first_scf` | `CHEBYSHEV POLYNOMIAL DEGREE SCALING FACTOR FIRST SCF` | Eigen-solver parameters | float | planned |  |
 | `subspace_rot_dofs_block_size` | `SUBSPACE ROT DOFS BLOCK SIZE` | Eigen-solver parameters | int | planned |  |

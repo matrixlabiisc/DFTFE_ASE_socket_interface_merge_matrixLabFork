@@ -101,6 +101,12 @@ PARAM_TABLE = [
     ParamSpec("use_gpudirect_mpi_allreduce","USE GPUDIRECT MPI ALL REDUCE",         GPU,      "bool",  "planned"),
     ParamSpec("use_dccl",                   "USE DCCL",                             GPU,      "bool",  "planned"),
     ParamSpec("use_elpa_gpu_kernel",        "USE ELPA GPU KERNEL",                  GPU,      "bool",  "planned"),
+    # Top-level, and the one parameter whose default is *computed*: if the deck
+    # leaves it unset, dftParameters.cc forces it to (solverMode is NSCF/BANDS),
+    # i.e. false for a GS run -- see the get_entries_wrongly_not_set() branch.
+    # Because the injector rewrites the template file before parse_input, an
+    # explicit value here counts as "set" and survives that branch.
+    ParamSpec("mem_opt_mode",               "MEM OPT MODE",                         None,     "bool",  "planned", "lower peak memory, marginal slowdown; unset => false for GS"),
     ParamSpec("self_potential_radius",      "SELF POTENTIAL RADIUS",                BC,       "float", "planned"),
     ParamSpec("polynomial_order_electrostatics", "POLYNOMIAL ORDER ELECTROSTATICS", FE,       "int",   "planned"),
     ParamSpec("poisson_tolerance",          "TOLERANCE",                            POISSON,  "float", "planned", "distinct from `tolerance` (SCF); same key, different subsection"),
@@ -108,6 +114,9 @@ PARAM_TABLE = [
     ParamSpec("helmholtz_tolerance",        "ABSOLUTE TOLERANCE HELMHOLTZ",         HELMHOLTZ,"float", "planned"),
     ParamSpec("helmholtz_max_iterations",   "MAXIMUM ITERATIONS HELMHOLTZ",         HELMHOLTZ,"int",   "planned"),
     ParamSpec("kerker_mixing_parameter",    "KERKER MIXING PARAMETER",              SCF,      "float", "planned"),
+    ParamSpec("adapt_anderson_mixing_parameter", "ADAPT ANDERSON MIXING PARAMETER", SCF,      "bool",  "planned", "DFT-FE default false = hold `scf_mixing` fixed"),
+    ParamSpec("resta_fermi_wavevector",     "RESTA FERMI WAVEVECTOR",               SCF,      "float", "planned", "only read by MIXING METHOD=ANDERSON_WITH_RESTA"),
+    ParamSpec("resta_screening_length",     "RESTA SCREENING LENGTH",               SCF,      "float", "planned", "only read by MIXING METHOD=ANDERSON_WITH_RESTA"),
     ParamSpec("compute_energy_each_iter",   "COMPUTE ENERGY EACH ITER",             SCF,      "bool",  "planned"),
     ParamSpec("cheby_degree_scaling_first_scf", "CHEBYSHEV POLYNOMIAL DEGREE SCALING FACTOR FIRST SCF", EIG, "float", "planned"),
     ParamSpec("subspace_rot_dofs_block_size", "SUBSPACE ROT DOFS BLOCK SIZE",       EIG,      "int",   "planned"),
