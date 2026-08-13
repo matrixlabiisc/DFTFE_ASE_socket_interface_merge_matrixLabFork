@@ -713,12 +713,32 @@ namespace dftfe
                                                           cellVectorsFlattened,
                                                           periodicBc);
 
+                    // Mehul: this bound must be the one dft.cc actually
+                    // enforces. initImageChargesUpdateKPoints() requires a
+                    // non-periodic fractional coordinate to lie *strictly*
+                    // inside (1e-6, 1-1e-6); the check here used to accept
+                    // [-1e-7, 1+1e-7], so an atom sitting exactly on the face
+                    // -- what ase.build.surface() produces, its bottom layer at
+                    // z=0 -- passed here and then aborted much deeper in, with
+                    // a message naming neither the atom nor the axis. Failing
+                    // at the same threshold, at the point where the atom index
+                    // is still in hand, costs nothing and rejects nothing that
+                    // would otherwise have run.
                     for (dftfe::uInt idim = 0; idim < 3; idim++)
                       if (!periodicBc[idim])
                         AssertThrow(
-                          frac[idim] > -1e-7 && frac[idim] < (1.0 + 1e-7),
+                          frac[idim] > 1e-6 && frac[idim] < (1.0 - 1e-6),
                           dealii::ExcMessage(
-                            "DFT-FE Error: fractional coordinates doesn't lie in [0,1] along a non-periodic direction. Please check input atomicPositionsCart."));
+                            "DFT-FE Error: atom " + std::to_string(i) +
+                            " has fractional coordinate " +
+                            std::to_string(frac[idim]) + " along non-periodic axis " +
+                            std::to_string(idim) +
+                            ", which is not strictly inside (0,1). There is no mesh "
+                            "outside the cell along a non-periodic direction and no "
+                            "periodic image to fold to, so the atom cannot be placed. "
+                            "Translate the whole system inside the cell (a rigid shift "
+                            "leaves energy and forces unchanged), or add vacuum. From "
+                            "ASE this is handled automatically by dftfe_ase.geometry."));
 
                     dftfeCoordinates[i][2] = frac[0];
                     dftfeCoordinates[i][3] = frac[1];

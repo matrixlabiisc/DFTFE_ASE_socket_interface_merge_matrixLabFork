@@ -29,6 +29,7 @@ from ase.calculators.calculator import Calculator, all_changes
 from ase.stress import full_3x3_to_voigt_6_stress
 from ase.units import Bohr, Hartree
 
+from . import geometry
 from .backends.socket import SocketBackend, DFTFEError
 from .binary import select_binary_kind
 from .config import get_profile, resolve_binaries
@@ -192,6 +193,10 @@ class DFTFE(Calculator):
         # the first compute(). Track it so its cost is charged to startup once,
         # and never to per-step interface overhead.
         self._startup_counted = False
+        # Rigid offset placing the atoms inside the cell along non-periodic
+        # axes, held fixed for the whole trajectory. See _placed_coords().
+        self._open_shift = None
+        self._open_shift_cell = None
 
         # Pseudopotential encoding: dict -> "DICT|El:path|..." ; else path/string.
         if isinstance(psp_path, dict):
@@ -285,6 +290,44 @@ class DFTFE(Calculator):
             argv = self.build_launch_argv(atoms.get_pbc())
             self.backend = self._make_socket_backend(argv)
 
+    # ── geometry ───────────────────────────────────────────────────────
+    def _placed_coords(self):
+        """Positions to send: rigidly translated inside the cell if DFT-FE needs it.
+
+        The translation is computed **once** and then reused for the whole
+        trajectory. That matters: recomputing it per step would let the system
+        creep relative to the finite-element mesh as the atoms relax, and two
+        steps whose energies are compared would no longer sit at the same place
+        in their own vacuum. A fixed offset keeps the frame constant.
+
+        It is recomputed only if the cached offset stops being enough -- the
+        cell changed, or a later step genuinely wandered out of the box. Both
+        are worth the log line they produce, because along an open direction
+        they mean the vacuum padding is too thin.
+
+        ``self.atoms`` is never mutated: ASE (and any optimizer holding it) owns
+        those positions, and they must stay continuous.
+        """
+        positions = self.atoms.get_positions()
+        cell = self.atoms.get_cell()[:]
+        pbc = self.atoms.get_pbc()
+
+        if not pbc.all():
+            cached = self._open_shift
+            if cached is not None and np.array_equal(cell, self._open_shift_cell):
+                if not geometry.needs_shift(positions + cached, cell, pbc):
+                    return positions + cached
+                log.warning(
+                    "atoms moved outside the cell along a non-periodic direction "
+                    "during the run; re-centring. The vacuum padding is marginal."
+                )
+            placed, shift = geometry.place_inside(positions, cell, pbc)
+            self._open_shift = shift
+            self._open_shift_cell = cell.copy()
+            return placed
+
+        return positions
+
     # ── ASE Calculator API ─────────────────────────────────────────────
     def calculate(self, atoms=None, properties=("energy",), system_changes=all_changes):
         super().calculate(atoms, properties, system_changes)
@@ -292,15 +335,23 @@ class DFTFE(Calculator):
         t_start = time.perf_counter()
         want_stress = self.compute_stress or ("stress" in properties)
 
-        # Positions are sent unwrapped. DFT-FE folds out-of-cell atoms into the
-        # cell itself, in reinit() and in updateAtomPositionsAndMoveMesh(),
-        # using its own periodic wrap. Keeping the ASE-side positions
-        # continuous is what lets LBFGS/NEB build coherent optimizer state:
-        # wrapping here would make a boundary crossing look like a
-        # full-lattice-vector jump to the optimizer.
+        # Positions are sent unwrapped along PERIODIC axes. DFT-FE folds those
+        # into the cell itself, in reinit() and in
+        # updateAtomPositionsAndMoveMesh(), using its own periodic wrap. Keeping
+        # the ASE-side positions continuous is what lets LBFGS/NEB build
+        # coherent optimizer state: wrapping here would make a boundary crossing
+        # look like a full-lattice-vector jump to the optimizer.
+        #
+        # Non-periodic axes get no such folding, from us or from DFT-FE -- there
+        # is no image to fold to. DFT-FE requires the atom to be strictly inside
+        # and aborts otherwise, so the one legal repair is a rigid translation of
+        # the whole system (see geometry.py). Distances, energy and forces are
+        # invariant under it; only the placement in the vacuum changes.
+        coords = self._placed_coords()
+
         request = {
             "cmd": "run",
-            "coords": (self.atoms.get_positions() / Bohr).tolist(),
+            "coords": (coords / Bohr).tolist(),
             "cell": (self.atoms.get_cell()[:] / Bohr).tolist(),
             "numbers": self.atoms.get_atomic_numbers().tolist(),
             "pbc": self.atoms.get_pbc().tolist(),
