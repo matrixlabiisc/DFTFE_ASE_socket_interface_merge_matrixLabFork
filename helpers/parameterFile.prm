@@ -167,6 +167,7 @@ subsection DFT functional parameters
 end
 subsection SCF parameters
   set TEMPERATURE=500.0
+  set LDOS TEMPERATURE=10000.0
   set MAXIMUM ITERATIONS=200
   set TOLERANCE=1e-05
   set ENERGY TOLERANCE=1e-07
