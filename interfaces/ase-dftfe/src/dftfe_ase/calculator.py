@@ -35,9 +35,32 @@ from .binary import select_binary_kind
 from .config import get_profile, resolve_binaries
 from .launchers import detect_launcher, get_launcher
 from .params import (BY_KWARG, DRIVER_OWNED_KEYS, GEOMETRY_KEYS, LEGACY_KEYS,
-                     to_prm_entries)
+                     format_value, to_prm_entries)
 
 log = logging.getLogger("dftfe_ase")
+
+# Sign applied to the stress arriving from dftfeWrapper::getCellStress().
+#
+# ASE defines sigma_ij = (1/V) dE/deps_ij, with P = -Tr(sigma)/3. DFT-FE's own
+# printed "Cell stress (Hartree/Bohr^3)" (configurationalForce.cc:817, the raw
+# d_stressTensor) is ALREADY in that convention, but the wrapper returns
+# -d_stressTensor (dftfeWrapper.cc:1326), so what reaches the socket has the
+# wrong sign for ASE. Undo it here.
+#
+# Measured, not argued (job 8756125): three native single points at a = 7.55 /
+# 7.60 / 7.65 Bohr on the al_bulk deck give dE/dV = -1.0958e-04 Ha/Bohr^3, which
+# for isotropic strain IS sigma_xx. The printed value is -1.1035e-04 -- same
+# sign, ratio 0.993. So the print is right and the wrapper's negation is not.
+# Two arguments had pointed opposite ways and neither was decisive: ASE negates
+# VASP's and LAMMPS's printed stress (vasp.py:863, lammpslib.py:496), but DFT-FE
+# does not need it; and dftfeWrapper.h:271-279 documents both signs at once --
+# prose says "negative of gradient", the formula says +(1/Omega) dE/deps. The
+# formula is the correct half.
+#
+# This belongs upstream in getCellStress(), which would also fix the LAMMPS and
+# i-PI consumers of the same function. Until that lands, the flip lives here --
+# and when it lands, THIS CONSTANT MUST GO BACK TO +1 or the sign flips twice.
+_WRAPPER_STRESS_SIGN = -1
 
 # Typed params kept on the existing per-key C++ path (verified "wired"). Note:
 # mixing_history + dispersion_correction_type are intentionally NOT here — they
@@ -62,6 +85,101 @@ _GENERIC_KWARGS = {k for k, s in BY_KWARG.items() if s.status == "planned"}
 
 def _serialize_overrides(entries):
     return "@@@".join(f"{e['section'] or ''}|||{e['key']}|||{e['value']}" for e in entries)
+
+
+# Human-readable name for each route a parameter can arrive by, in increasing
+# order of precedence -- the order dftfeWrapper.cc applies them in.
+_CHANNELS = {
+    "kwarg":     "a typed kwarg",
+    "extra_prm": "extra_prm=",
+    "prm_file":  "prm_file=",
+}
+
+
+def _merge_entries(entries, typed_params=None):
+    """Collapse repeated settings of one .prm parameter, out loud.
+
+    Three routes reach the same DFT-FE key: a typed kwarg (``tolerance=``), an
+    ``extra_prm`` entry, and a line in a ``prm_file`` deck. The C++ side resolves
+    a clash by order -- typed injection first, then the generic override list in
+    sequence (``dftfeWrapper.cc:1017``, *"applied AFTER all typed injection so an
+    explicit user override always wins"*) -- so the last writer wins.
+
+    That precedence is deliberate and worth keeping: "run this benchmark deck,
+    but with a tighter tolerance" is a real workflow. What is not defensible is
+    applying it in silence, which is what happened until now. Asking for one
+    value and getting another with no diagnostic is the same failure as the
+    ambiguous-subsection write this injection path was rewritten to eliminate
+    (PROJECT.md 14.3): the run converges, reports success, and answers a question
+    nobody asked.
+
+    So:
+
+    * same key, same value -- collapsed silently; there is nothing to choose.
+    * same key, different values, **both inside one** ``extra_prm`` **dict** --
+      raises. Two spellings of one target in one dict (``"TOLERANCE"``,
+      ``("SCF parameters", "TOLERANCE")``, ``"SCF parameters|||TOLERANCE"``) have
+      no precedence to appeal to; dict insertion order would decide the physics.
+    * same key, different values, different routes -- warns, naming both values
+      and the winner, and applies the documented precedence. This cannot reject
+      anything that previously ran.
+
+    ``typed_params`` are the wired kwargs, which travel as typed request fields
+    rather than as entries. They are checked too, because a typed kwarg losing to
+    an override is the easiest clash to create and the least visible.
+    """
+    merged, at = [], {}
+    for e in entries:
+        ident = (e["section"] or "", e["key"])
+        src = e.get("_src", "extra_prm")
+        if ident not in at:
+            at[ident] = len(merged)
+            merged.append(e)
+            continue
+
+        prev = merged[at[ident]]
+        if str(prev["value"]) == str(e["value"]):
+            continue  # same answer twice; nothing was overridden
+        where = f"'{ident[1]}'" + (f" in subsection '{ident[0]}'" if ident[0] else " (top level)")
+        if src == prev.get("_src") == "extra_prm":
+            raise ValueError(
+                f"extra_prm sets {where} twice, to {prev['value']!r} and "
+                f"{e['value']!r}. Which one applies would come down to dict "
+                f"ordering, so neither is used. Give this parameter one value, "
+                f"or name the subsections explicitly if you meant two different "
+                f"parameters that share a key."
+            )
+        log.warning(
+            "%s is set more than once: %s gives %r, %s gives %r. Using %r -- "
+            "later routes override earlier ones (kwarg < extra_prm < prm_file). "
+            "Pass it once if that is not what you meant.",
+            where, _CHANNELS.get(prev.get("_src"), prev.get("_src")), prev["value"],
+            _CHANNELS.get(src, src), e["value"], e["value"],
+        )
+        merged[at[ident]] = e
+
+    # A wired kwarg reaches DFT-FE as a typed request field, not as an entry, so
+    # a clash with an override is invisible in the list above.
+    for kwarg, value in (typed_params or {}).items():
+        spec = BY_KWARG.get(kwarg)
+        if spec is None:
+            continue
+        ident = (spec.section or "", spec.prm_key)
+        if ident not in at:
+            continue
+        winner = merged[at[ident]]
+        if str(format_value(spec.dtype, value)) == str(winner["value"]):
+            continue
+        log.warning(
+            "'%s'%s is set both by %s=%r and by %s (%r). Using %r: the generic "
+            "override is applied after all typed injection (dftfeWrapper.cc), so "
+            "it wins.",
+            ident[1], f" in subsection '{ident[0]}'" if ident[0] else "",
+            kwarg, value,
+            _CHANNELS.get(winner.get("_src"), winner.get("_src")), winner["value"],
+            winner["value"],
+        )
+    return merged
 
 
 def read_prm(path):
@@ -232,12 +350,20 @@ class DFTFE(Calculator):
         # Generic .prm overrides: "planned" kwargs (B) + extra_prm dict + full
         # .prm file (A) -> one {section,key,value} list applied by the C++
         # generic injector. No per-parameter sed, no silent defaulting.
-        entries = to_prm_entries({k: v for k, v in params.items()
-                                  if v is not None and k in _GENERIC_KWARGS})
+        #
+        # Each entry is tagged with the route it came from, because the same
+        # parameter can arrive by more than one and the loser has to be named in
+        # the diagnostic -- see _merge_entries.
+        entries = [dict(e, _src="kwarg") for e in
+                   to_prm_entries({k: v for k, v in params.items()
+                                   if v is not None and k in _GENERIC_KWARGS})]
         if extra_prm:
-            entries += _extra_prm_entries(extra_prm)
+            entries += [dict(e, _src="extra_prm")
+                        for e in _extra_prm_entries(extra_prm)]
         if prm_file:
-            entries += _parse_prm_file(prm_file)
+            entries += [dict(e, _src="prm_file")
+                        for e in _parse_prm_file(prm_file)]
+        entries = _merge_entries(entries, self._params)
         self._prm_overrides = _serialize_overrides(entries)
 
         # Backend connection settings retained for (possibly lazy) construction.
@@ -453,7 +579,8 @@ class DFTFE(Calculator):
         if result.get("forces") is not None:
             self.results["forces"] = np.array(result["forces"], float) * (Hartree / Bohr)
         if want_stress and result.get("stress") is not None:
-            stress = np.array(result["stress"], float) * (Hartree / Bohr**3)
+            stress = (np.array(result["stress"], float)
+                      * _WRAPPER_STRESS_SIGN * (Hartree / Bohr**3))
             if stress.shape == (3, 3):
                 stress = full_3x3_to_voigt_6_stress(stress)
             self.results["stress"] = stress
