@@ -52,7 +52,7 @@ import sys
 import time
 
 import numpy as np
-from ase.units import Bohr
+from ase.units import Bohr, Hartree
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", "..", ".."))   # dftfe/src
@@ -65,10 +65,16 @@ from dftfe_ase.params import to_prm_entries              # noqa: E402
 TEMPLATE = os.path.join(ROOT, "helpers", "parameterFile.prm")
 CASES_DIR = os.path.join(HERE, "cases")
 REFS_FILE = os.path.join(HERE, "references.json")
+# GPU references live in their own file: a reference file holds one configuration
+# per case, and use_device is part of the provenance gate, so a GPU number stored
+# where the CPU one lives would make every CPU run report MISMATCH. See
+# test_suite.refs_file_for.
+GPU_REFS_FILE = os.path.join(HERE, "references.gpu.json")
 
 # Cases whose ASE arm is a multi-step relaxation. Native DFT-FE relaxes with its
-# own optimizer, so a relaxed geometry is not comparable at 1e-10 Ha -- different
-# optimizers take different paths to different minima-adjacent points. The native
+# own LBFGS and the ASE arm with ASE's, matched on history and max step, so a
+# relaxed geometry is still not comparable at 1e-10 Ha -- two implementations of
+# one algorithm take different paths to different minima-adjacent points. The native
 # reference for these is therefore the single point at the INITIAL geometry,
 # which is exactly what the recorder captures anyway.
 INITIAL_POINT_ONLY = {"relax_o2"}
@@ -162,7 +168,8 @@ def write_prm(entries, dest):
     return pending  # anything left over was not declared in this build
 
 
-def build_deck(work, atoms, kwargs, psp_library, compute_forces=True):
+def build_deck(work, atoms, kwargs, psp_library, compute_forces=True, relax=False,
+               force_tol=None, use_device=False):
     os.makedirs(work, exist_ok=True)
     cell_bohr = atoms.get_cell()[:] / Bohr
     pos_bohr = atoms.get_positions() / Bohr
@@ -211,7 +218,7 @@ def build_deck(work, atoms, kwargs, psp_library, compute_forces=True):
     # the calculator would otherwise have supplied.
     entries = to_prm_entries({k: v for k, v in kwargs.items() if v is not None})
     entries += [
-        {"section": "", "key": "SOLVER MODE", "value": "GS"},
+        {"section": "", "key": "SOLVER MODE", "value": "GEOOPT" if relax else "GS"},
         {"section": "", "key": "VERBOSITY", "value": kwargs.get("verbosity", 2)},
         {"section": "Geometry", "key": "NATOMS", "value": len(atoms)},
         {"section": "Geometry", "key": "NATOM TYPES", "value": len(uniq)},
@@ -227,8 +234,45 @@ def build_deck(work, atoms, kwargs, psp_library, compute_forces=True):
         {"section": "Optimization", "key": "CELL STRESS",
          "value": "true" if kwargs.get("compute_stress") else "false"},
     ]
-    undeclared = write_prm(entries, os.path.join(work, "parameterFile.prm"))
+    if relax:
+        # Match ASE's stopping criterion, or the two optimizers are not being
+        # asked the same question. ASE LBFGS uses fmax in eV/Ang; DFT-FE FORCE TOL
+        # is Ha/Bohr, and its 1e-4 default is NOT the same number as the 0.01
+        # eV/Ang the cases use (= 1.9447e-4 Ha/Bohr).
+        entries += [
+            {"section": "Optimization", "key": "OPTIMIZATION MODE", "value": "ION"},
+            {"section": "Optimization", "key": "FORCE TOL",
+             "value": f"{force_tol:.12e}"},
+        ]
+    dest = os.path.join(work, "parameterFile.prm")
+    undeclared = write_prm(entries, dest)
+
+    # USE GPU is driver-owned: runParameters.cc declares it, dftParameters does
+    # not, and helpers/parameterFile.prm is generated from dftParameters alone --
+    # so it is not in the template and write_prm (which only replaces declared
+    # entries) cannot inject it. Prepend it as a top-level line instead. Safe
+    # because the native driver parses with skip_undefined=true
+    # (runParameters.cc:170), which is also why real decks can carry both
+    # parameter sets in one file.
+    if use_device:
+        body = open(dest).read()
+        open(dest, "w").write("set USE GPU=true\n" + body)
     return undeclared
+
+
+def native_cmd(args, binary):
+    """The launch command for one native run.
+
+    On GPUs the ranks have to be pinned one per tile with Aurora's
+    gpu_tile_compact.sh -- without it every rank on the node lands on tile 0,
+    which is the convention every GPU run in runs/ already follows. On the host
+    this stays the plain mpirun the CPU references were generated with, so those
+    numbers remain reproducible by the same command that made them.
+    """
+    if not args.use_device:
+        return ["mpirun", "-np", str(args.np), binary, "parameterFile.prm"]
+    return ["mpiexec", "-n", str(args.np), "--ppn", str(args.ppn),
+            args.gpu_wrapper, binary, "parameterFile.prm"]
 
 
 def main():
@@ -245,6 +289,23 @@ def main():
                    help="seconds per native run before skipping it (default 900)")
     p.add_argument("--skip-existing", action="store_true",
                    help="leave cases that already carry a native-pgd reference")
+    p.add_argument("--use-device", action="store_true",
+                   help="generate GPU references: injects USE GPU=true, launches "
+                        "one rank per GPU tile, and writes references.gpu.json")
+    p.add_argument("--ppn", type=int, default=12,
+                   help="ranks per node for GPU runs (default 12 = one per tile)")
+    p.add_argument("--gpu-wrapper", default="gpu_tile_compact.sh",
+                   help="rank-to-tile binding wrapper for GPU runs")
+    p.add_argument("--parse-only", action="store_true",
+                   help="re-parse the native.out already in --workroot instead of "
+                        "running DFT-FE. Use to extract a quantity a completed "
+                        "run already printed (e.g. CELL STRESS) without spending "
+                        "node time or moving the reference to a different run.")
+    p.add_argument("--relax", action="store_true",
+                   help="for INITIAL_POINT_ONLY cases, ALSO run a native GEOOPT "
+                        "and record the relaxed energy under 'relaxed'")
+    p.add_argument("--fmax-ev-ang", type=float, default=0.01,
+                   help="ASE fmax the relaxation cases use; converted to FORCE TOL")
     args = p.parse_args()
 
     sys.path.insert(0, HERE)
@@ -252,7 +313,11 @@ def main():
 
     names = args.tests or list(BINARY_KIND)
     bins = {"real": args.pgd_real, "complex": args.pgd_complex}
-    refs = json.load(open(REFS_FILE)) if os.path.exists(REFS_FILE) else {}
+    refs_file = GPU_REFS_FILE if args.use_device else REFS_FILE
+    refs = json.load(open(refs_file)) if os.path.exists(refs_file) else {}
+    print(f"writing to {os.path.basename(refs_file)} "
+          f"(use_device={args.use_device}, np={args.np}"
+          + (f", ppn={args.ppn}" if args.use_device else "") + ")")
 
     for name in names:
         kind = BINARY_KIND[name]
@@ -272,7 +337,8 @@ def main():
             print("  NOTE: multi-step case -- native reference is the single point "
                   "at the initial geometry (optimizer paths are not comparable)")
 
-        undeclared = build_deck(work, atoms, kwargs, args.psp_library)
+        undeclared = build_deck(work, atoms, kwargs, args.psp_library,
+                                use_device=args.use_device)
         if undeclared:
             print(f"  WARNING: not declared in this build, dropped: "
                   f"{sorted(undeclared)}")
@@ -281,27 +347,45 @@ def main():
             continue
 
         st = os.stat(binary)
-        cmd = ["mpirun", "-np", str(args.np), binary, "parameterFile.prm"]
-        t0 = time.time()
-        try:
-            proc = subprocess.run(cmd, cwd=work, capture_output=True, text=True,
-                                  timeout=args.case_timeout)
-        except subprocess.TimeoutExpired as exc:
-            # TimeoutExpired carries RAW BYTES even under text=True -- decoding
-            # happens after communicate() returns, which it never did. Writing
-            # str + bytes here raised TypeError and killed the whole script,
-            # losing the three cases queued behind this one (job 8753495).
-            def _txt(v):
-                return v.decode(errors="replace") if isinstance(v, bytes) else (v or "")
-            open(os.path.join(work, "native.out"), "w").write(
-                _txt(exc.stdout) + "\n" + _txt(exc.stderr))
-            print(f"  TIMEOUT after {args.case_timeout}s -- skipped. Raise "
-                  f"--case-timeout, or check this case's mesh: it is the "
-                  f"expensive knob (relax_o2 uses MESH SIZE 0.6 / order 7).")
-            continue
-        elapsed = time.time() - t0
-        text = proc.stdout + "\n" + proc.stderr
-        open(os.path.join(work, "native.out"), "w").write(text)
+
+        # Re-parse an output this script already produced, instead of running
+        # DFT-FE again. Added to pin CELL STRESS: job 8753802's native.out
+        # already contained the stress block (the deck asks for it whenever the
+        # case does), it was simply never parsed. Extracting a quantity that is
+        # already in a completed run costs no node time, and re-running would
+        # have changed nothing except the rank-order noise floor -- the reference
+        # would no longer be the run the rest of the file documents.
+        if args.parse_only:
+            out_path = os.path.join(work, "native.out")
+            if not os.path.exists(out_path):
+                print(f"  --parse-only: no {out_path}; skipped")
+                continue
+            text = open(out_path, errors="replace").read()
+            elapsed = 0.0
+            proc = None
+        else:
+            cmd = native_cmd(args, binary)
+            t0 = time.time()
+            try:
+                proc = subprocess.run(cmd, cwd=work, capture_output=True,
+                                      text=True, timeout=args.case_timeout)
+            except subprocess.TimeoutExpired as exc:
+                # TimeoutExpired carries RAW BYTES even under text=True --
+                # decoding happens after communicate() returns, which it never
+                # did. Writing str + bytes here raised TypeError and killed the
+                # whole script, losing the three cases queued behind this one
+                # (job 8753495).
+                def _txt(v):
+                    return v.decode(errors="replace") if isinstance(v, bytes) else (v or "")
+                open(os.path.join(work, "native.out"), "w").write(
+                    _txt(exc.stdout) + "\n" + _txt(exc.stderr))
+                print(f"  TIMEOUT after {args.case_timeout}s -- skipped. Raise "
+                      f"--case-timeout, or check this case's mesh: it is the "
+                      f"expensive knob (relax_o2 uses MESH SIZE 0.6 / order 7).")
+                continue
+            elapsed = time.time() - t0
+            text = proc.stdout + "\n" + proc.stderr
+            open(os.path.join(work, "native.out"), "w").write(text)
 
         try:
             energy, forces = FileBackend._parse(text, natoms=len(atoms))
@@ -310,26 +394,78 @@ def main():
             print(f"  see {work}/native.out")
             continue
 
+        # Stress only exists when the case asked for it (build_deck sets CELL
+        # STRESS from the case's own compute_stress kwarg). None is recorded as
+        # None, and test_suite.py treats "case computes stress, reference has
+        # none" as a failure rather than skipping the check in silence.
+        stress = FileBackend._parse_stress(text)
+
         print(f"  native energy = {energy:.12f} Ha"
               + (f", {len(forces)} force rows" if forces else ", no forces parsed")
+              + (", stress 3x3" if stress else "")
               + f"  [{elapsed:.0f}s]")
         refs[name] = {
             "energy_ha": energy,
             "forces_ha_per_bohr": forces,
+            "stress_ha_per_bohr3": stress,
             "_source": "native pGD via make_references.py",
             "provenance": {
                 "generator": "native-pgd",
                 "binary": os.path.abspath(binary),
                 "binary_stamp": f"{st.st_size}:{int(st.st_mtime)}",
                 "np": args.np,
-                "use_device": False,
+                "use_device": bool(args.use_device),
             },
         }
+        # Relaxed reference for multi-step cases. The single point above pins
+        # the interface at 1e-10; this pins where the relaxation lands, which is
+        # a physics comparison between two DIFFERENT LBFGS implementations
+        # (DFT-FE's and ASE's) and cannot be expected to hold at 1e-10. Its achievable
+        # tolerance is measured, not assumed -- that is what this records.
+        if args.relax and name in INITIAL_POINT_ONLY:
+            ftol = args.fmax_ev_ang / (Hartree / Bohr)
+            rwork = work + "_relax"
+            if not args.parse_only:
+                build_deck(rwork, atoms, kwargs, args.psp_library,
+                           relax=True, force_tol=ftol,
+                           use_device=args.use_device)
+            print(f"  native GEOOPT (FORCE TOL {ftol:.6e} Ha/Bohr) ...", flush=True)
+            t1 = time.time()
+            try:
+                if args.parse_only:
+                    rtext = open(os.path.join(rwork, "native.out"),
+                                 errors="replace").read()
+                else:
+                    rp = subprocess.run(native_cmd(args, binary),
+                                        cwd=rwork, capture_output=True, text=True,
+                                        timeout=args.case_timeout)
+                    rtext = rp.stdout + "\n" + rp.stderr
+                    open(os.path.join(rwork, "native.out"), "w").write(rtext)
+                re_ha, rf = FileBackend._parse(rtext, natoms=len(atoms))
+                nsteps = len(re.findall(r"Ion position updates", rtext)) or None
+                refs[name]["relaxed"] = {
+                    "energy_ha": re_ha, "forces_ha_per_bohr": rf,
+                    "force_tol_ha_bohr": ftol, "native_steps": nsteps,
+                    "_note": ("native DFT-FE LBFGS (HISTORY 5, MAX ION UPDATE "
+                              "STEP 0.5 a.u.); the ASE arm runs LBFGS matched to "
+                              "it (memory=5, maxstep=0.5*Bohr). Two LBFGS "
+                              "implementations still differ in line search and "
+                              "initial Hessian scaling, so this is NOT a 1e-10 "
+                              "comparison."),
+                }
+                print(f"  native relaxed = {re_ha:.12f} Ha  "
+                      f"[{time.time()-t1:.0f}s]")
+            except subprocess.TimeoutExpired:
+                print(f"  GEOOPT TIMEOUT after {args.case_timeout}s -- "
+                      f"relaxed reference not recorded")
+            except Exception as exc:
+                print(f"  GEOOPT failed: {exc}")
+
         # Written after EVERY case, not at the end. The first run of this script
         # completed co2 and n2, then hit the job walltime on relax_o2 -- and
         # discarded both, because the only write was after the loop.
-        json.dump(refs, open(REFS_FILE, "w"), indent=2)
-        print(f"  -> {name} saved to references.json")
+        json.dump(refs, open(refs_file, "w"), indent=2)
+        print(f"  -> {name} saved to {os.path.basename(refs_file)}")
 
     return 0
 

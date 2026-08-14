@@ -1,41 +1,229 @@
 {
   "_comment": "Reference values for ASE-DFTFE automated tests. Energy in Hartree, forces in Ha/Bohr. null = NOT pinned: the suite FAILS on it. Seed deliberately with `test_suite.py --seed` on a binary you trust, never by accident.",
-  "_schema": "test_suite.py reads exactly two keys per case: 'energy_ha' (float) and 'forces_ha_per_bohr' (N x 3 list). 'forces_rmse_mev_per_ang' below is a FOSSIL of an older RMSE-based schema and is read by nothing; see the note on n2_nonperiodic.",
+  "_validated": "Host arm, np=64: 6/6 PASS on 2026-08-14 (jobs 8755816 + 8755829). Five of six agreed with native pGD BITWISE on energy and forces; al_slab_semiperiodic, the one case carrying a rigid placement shift, agreed to 2.6e-13 Ha / 4.9e-12 Ha/Bohr. relax_o2's relaxed landing point sat 3.265e-09 Ha from native LBFGS, i.e. at the MPI-reduction noise floor.",
+  "_binary_note": "The pGD CPU binaries that GENERATED these numbers were replaced on 2026-08-14 12:29/12:34 by a rebuild after the PR-714 (LDOS) merge, so the exact executables are no longer on disk. The numbers stand -- provenance records the binary but deliberately does not gate on it, and PR 714 is LDOS/Helmholtz work that none of these six cases exercise. But if a future host run FAILS by a small margin, suspect that rebuild before suspecting the interface, and re-generate with make_references.py rather than loosening a tolerance.",
+  "_schema": "test_suite.py gates on three keys per case: 'energy_ha' (float), 'forces_ha_per_bohr' (N x 3 list) and 'stress_ha_per_bohr3' (3 x 3 list, DFT-FE's own units and shape as printed under 'Cell stress (Hartree/Bohr^3)'; null where the case does not request stress -- only al_bulk_periodic does). ASE reports stress as Voigt-6 in eV/A^3; the suite converts the computed value into these units, never the reference out of them. Stress is the most placement-dependent quantity here (PROJECT.md 14.2), so a stress reference is only comparable to a run at the same placement. A case may also carry a 'relaxed' block ('energy_ha', 'forces_ha_per_bohr', 'force_tol_ha_bohr', 'native_steps') -- that one is REPORTED, never gated: it is native LBFGS's landing point against ASE BFGS's, so its achievable tolerance is measured, not asserted. For a relaxation case the gated 'energy_ha' is the single point at the INITIAL geometry.",
   "co2_nonperiodic": {
-    "energy_ha": -37.649581372295614,
-    "forces_ha_per_bohr": null,
-    "forces_rmse_mev_per_ang": null,
-    "_source": "co2_gs_socket_merge_test.log"
+    "energy_ha": -37.64950503627557,
+    "forces_ha_per_bohr": [
+      [
+        4.961087936233589e-07,
+        -3.917334266116676e-07,
+        6.83228146081198e-08
+      ],
+      [
+        -0.019489462852267502,
+        -4.030605168191456e-08,
+        2.422377498817952e-09
+      ],
+      [
+        0.01948896674347388,
+        4.3203947829358216e-07,
+        -7.074519210693775e-08
+      ]
+    ],
+    "stress_ha_per_bohr3": null,
+    "_source": "native pGD via make_references.py",
+    "provenance": {
+      "generator": "native-pgd",
+      "binary": "/lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe_pgd/install/cpu_real/dftfe",
+      "binary_stamp": "1471152:1786643875",
+      "np": 64,
+      "use_device": false
+    }
   },
   "graphene_periodic": {
-    "energy_ha": -11.401437698524642,
-    "forces_ha_per_bohr": null,
-    "forces_rmse_mev_per_ang": null,
-    "_source": "graphene_socket_test.log"
+    "energy_ha": -11.401436763722696,
+    "forces_ha_per_bohr": [
+      [
+        -0.014438977017960677,
+        0.008334875206717971,
+        -2.456037393019909e-07
+      ],
+      [
+        0.014438977017960677,
+        -0.008334875206717971,
+        2.456037393019909e-07
+      ]
+    ],
+    "stress_ha_per_bohr3": null,
+    "_source": "native pGD via make_references.py",
+    "provenance": {
+      "generator": "native-pgd",
+      "binary": "/lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe_pgd/install/cpu_complex/dftfe",
+      "binary_stamp": "1471152:1786043565",
+      "np": 64,
+      "use_device": false
+    }
   },
   "al_bulk_periodic": {
-    "energy_ha": -9.242132802264342,
-    "forces_ha_per_bohr": null,
-    "forces_rmse_mev_per_ang": null,
-    "_source": "al_bulk_socket_test.log"
+    "energy_ha": -9.241937719038209,
+    "forces_ha_per_bohr": [
+      [
+        -8.640620663139152e-08,
+        -1.3453990766132954e-07,
+        1.927276992813329e-07
+      ],
+      [
+        2.516640753704807e-07,
+        7.184272561955326e-08,
+        4.414782575233594e-09
+      ],
+      [
+        -4.9608660617677973e-08,
+        -8.180226370706328e-08,
+        -1.8102957439795272e-07
+      ],
+      [
+        -1.1564920812141122e-07,
+        1.4449944574883954e-07,
+        -1.6112907458613813e-08
+      ]
+    ],
+    "stress_ha_per_bohr3": [
+      [
+        -0.00011034756121896287,
+        -5.577887990917342e-10,
+        -1.2179657222699596e-09
+      ],
+      [
+        -5.573254930353495e-10,
+        -0.00011034774899475526,
+        -2.1794699377326926e-11
+      ],
+      [
+        -1.2172142081379163e-09,
+        -2.1920873570629467e-11,
+        -0.0001103469100737821
+      ]
+    ],
+    "_source": "native pGD via make_references.py",
+    "provenance": {
+      "generator": "native-pgd",
+      "binary": "/lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe_pgd/install/cpu_complex/dftfe",
+      "binary_stamp": "1471152:1786043565",
+      "np": 64,
+      "use_device": false
+    }
   },
   "n2_nonperiodic": {
-    "energy_ha": -20.641688948796197,
-    "forces_ha_per_bohr": null,
-    "forces_rmse_mev_per_ang": 8694.968012,
-    "_source": "auto-seeded on first run",
-    "_note_forces_rmse": "Dead key, read by no code. 8694.97 meV/A is not an error-vs-reference: this case holds N2 at 2.6 Bohr = 1.376 A, ~25% beyond the 1.098 A equilibrium bond, where a several-eV/A restoring force is the correct physics. Do not 'fix' it; if it bothers you, delete it."
+    "energy_ha": -20.641599801463535,
+    "forces_ha_per_bohr": [
+      [
+        0.2928422981311615,
+        -3.0790375633528726e-07,
+        -3.812778816446301e-08
+      ],
+      [
+        -0.2928422981311615,
+        3.0790375633528726e-07,
+        3.8127788164462995e-08
+      ]
+    ],
+    "stress_ha_per_bohr3": null,
+    "_source": "native pGD via make_references.py",
+    "provenance": {
+      "generator": "native-pgd",
+      "binary": "/lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe_pgd/install/cpu_real/dftfe",
+      "binary_stamp": "1471152:1786643875",
+      "np": 64,
+      "use_device": false
+    }
   },
   "relax_o2": {
-    "energy_ha": -31.7647783703347,
-    "forces_ha_per_bohr": null,
-    "forces_rmse_mev_per_ang": 1.159702,
-    "_source": "auto-seeded on first run",
-    "_note": "listed in test_suite.RUN_ONLY: completion is the assertion, values are not compared"
+    "energy_ha": -31.76204430125378,
+    "forces_ha_per_bohr": [
+      [
+        0.05522063717434844,
+        3.603117573651628e-08,
+        1.3496259804027778e-08
+      ],
+      [
+        -0.05522063717434844,
+        -3.603117573651628e-08,
+        -1.3496259804027778e-08
+      ]
+    ],
+    "stress_ha_per_bohr3": null,
+    "_source": "native pGD via make_references.py",
+    "provenance": {
+      "generator": "native-pgd",
+      "binary": "/lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe_pgd/install/cpu_real/dftfe",
+      "binary_stamp": "1471152:1786643875",
+      "np": 64,
+      "use_device": false
+    },
+    "relaxed": {
+      "energy_ha": -31.764763711109943,
+      "forces_ha_per_bohr": [
+        [
+          7.10560626914214e-05,
+          -4.675189193194571e-09,
+          -5.1252876666673695e-09
+        ],
+        [
+          -7.10560626914214e-05,
+          4.675189193194571e-09,
+          5.1252876666673695e-09
+        ]
+      ],
+      "force_tol_ha_bohr": 0.0001944690395740863,
+      "native_steps": null,
+      "_note": "native DFT-FE LBFGS; ASE uses BFGS. Different optimizers stop at different points on the same basin, so this is NOT a 1e-10 comparison."
+    }
   },
   "al_slab_semiperiodic": {
-    "energy_ha": null,
-    "forces_ha_per_bohr": null,
-    "_source": "NOT SEEDED. Must be established with --seed on a real binary carrying the open-direction fix (dftfe/install/cpu_real), not invented."
+    "energy_ha": -18.415566507445096,
+    "forces_ha_per_bohr": [
+      [
+        2.1439025935297783e-05,
+        -9.730554443791599e-06,
+        0.018319992732798267
+      ],
+      [
+        -1.2389533850973349e-05,
+        -4.16257668961502e-06,
+        0.018326945835927116
+      ],
+      [
+        8.274565247767238e-06,
+        6.391324492803025e-07,
+        0.01831785993145836
+      ],
+      [
+        -2.5977098938879615e-06,
+        2.1241993456920873e-05,
+        0.01832245206265952
+      ],
+      [
+        -5.3681606740101695e-06,
+        -2.8113011462583732e-06,
+        -0.018318385110165973
+      ],
+      [
+        -2.8011598864287096e-07,
+        7.758741379398932e-06,
+        -0.01832253681286948
+      ],
+      [
+        4.337412821841226e-06,
+        -4.495326680922362e-06,
+        -0.01832518805069966
+      ],
+      [
+        -1.3415483597391894e-05,
+        -8.440108325012755e-06,
+        -0.018321140589108144
+      ]
+    ],
+    "stress_ha_per_bohr3": null,
+    "_source": "native pGD via make_references.py",
+    "provenance": {
+      "generator": "native-pgd",
+      "binary": "/lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe_pgd/install/cpu_real/dftfe",
+      "binary_stamp": "1471152:1786643875",
+      "np": 64,
+      "use_device": false
+    }
   }
 }

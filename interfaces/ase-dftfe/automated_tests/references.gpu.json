@@ -1,0 +1,225 @@
+{
+  "co2_nonperiodic": {
+    "energy_ha": -37.64950503701038,
+    "forces_ha_per_bohr": [
+      [
+        1.9059741490831587e-06,
+        -5.89305089081873e-08,
+        5.481665132228869e-08
+      ],
+      [
+        -0.01960132449186409,
+        8.431788791636997e-10,
+        2.9210783030883605e-08
+      ],
+      [
+        0.019599418517715007,
+        5.80873300290236e-08,
+        -8.402743435317235e-08
+      ]
+    ],
+    "stress_ha_per_bohr3": null,
+    "_source": "native pGD via make_references.py",
+    "provenance": {
+      "generator": "native-pgd",
+      "binary": "/lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe_pgd/install/real/dftfe",
+      "binary_stamp": "1515136:1786708626",
+      "np": 24,
+      "use_device": true
+    }
+  },
+  "n2_nonperiodic": {
+    "energy_ha": -20.641599801368745,
+    "forces_ha_per_bohr": [
+      [
+        0.2928678278772917,
+        -6.504519809928677e-07,
+        6.435817126980001e-07
+      ],
+      [
+        -0.2928678278772917,
+        6.504519809928677e-07,
+        -6.435817126980001e-07
+      ]
+    ],
+    "stress_ha_per_bohr3": null,
+    "_source": "native pGD via make_references.py",
+    "provenance": {
+      "generator": "native-pgd",
+      "binary": "/lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe_pgd/install/real/dftfe",
+      "binary_stamp": "1515136:1786708626",
+      "np": 24,
+      "use_device": true
+    }
+  },
+  "relax_o2": {
+    "energy_ha": -31.762044300490974,
+    "forces_ha_per_bohr": [
+      [
+        0.055219982772719,
+        2.0463170217574995e-08,
+        -5.532848656721788e-09
+      ],
+      [
+        -0.055219982772719,
+        -2.0463170217574995e-08,
+        5.532848656721788e-09
+      ]
+    ],
+    "stress_ha_per_bohr3": null,
+    "_source": "native pGD via make_references.py",
+    "provenance": {
+      "generator": "native-pgd",
+      "binary": "/lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe_pgd/install/real/dftfe",
+      "binary_stamp": "1515136:1786708626",
+      "np": 24,
+      "use_device": true
+    },
+    "relaxed": {
+      "energy_ha": -31.76476371157276,
+      "forces_ha_per_bohr": [
+        [
+          7.806591254355677e-05,
+          3.7570492390516543e-10,
+          5.82519645331195e-10
+        ],
+        [
+          -7.806591254355677e-05,
+          -3.7570492390516543e-10,
+          -5.82519645331195e-10
+        ]
+      ],
+      "force_tol_ha_bohr": 0.0001944690395740863,
+      "native_steps": null,
+      "_note": "native DFT-FE LBFGS (HISTORY 5, MAX ION UPDATE STEP 0.5 a.u.); the ASE arm runs LBFGS matched to it (memory=5, maxstep=0.5*Bohr). Two LBFGS implementations still differ in line search and initial Hessian scaling, so this is NOT a 1e-10 comparison."
+    }
+  },
+  "al_slab_semiperiodic": {
+    "energy_ha": -18.415566478725417,
+    "forces_ha_per_bohr": [
+      [
+        7.307951032285873e-06,
+        -1.5127542289907406e-05,
+        0.018388569748498697
+      ],
+      [
+        1.8163072911179283e-06,
+        1.8206505710745556e-07,
+        0.01838991220711916
+      ],
+      [
+        1.617183421574211e-05,
+        9.981980924381206e-06,
+        0.018392296314440507
+      ],
+      [
+        -1.0543416556574533e-05,
+        1.3462085687883835e-05,
+        0.01839413703556617
+      ],
+      [
+        6.813819859515793e-06,
+        3.6734077298570447e-06,
+        -0.01839105011868111
+      ],
+      [
+        -1.2574561638200286e-05,
+        -2.1814800850057622e-06,
+        -0.0183945906787094
+      ],
+      [
+        -9.683011210235067e-06,
+        -1.0517131643698415e-05,
+        -0.018388814982779323
+      ],
+      [
+        6.910770063481897e-07,
+        5.266146193820448e-07,
+        -0.018390459525454702
+      ]
+    ],
+    "stress_ha_per_bohr3": null,
+    "_source": "native pGD via make_references.py",
+    "provenance": {
+      "generator": "native-pgd",
+      "binary": "/lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe_pgd/install/real/dftfe",
+      "binary_stamp": "1515136:1786708626",
+      "np": 24,
+      "use_device": true
+    }
+  },
+  "graphene_periodic": {
+    "energy_ha": -11.401436763804952,
+    "forces_ha_per_bohr": [
+      [
+        -0.014438660124979684,
+        0.00833605430943327,
+        -9.084819082779243e-09
+      ],
+      [
+        0.014438660124979684,
+        -0.00833605430943327,
+        9.084819082779243e-09
+      ]
+    ],
+    "stress_ha_per_bohr3": null,
+    "_source": "native pGD via make_references.py",
+    "provenance": {
+      "generator": "native-pgd",
+      "binary": "/lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe_pgd/install/complex/dftfe",
+      "binary_stamp": "1515136:1786709054",
+      "np": 24,
+      "use_device": true
+    }
+  },
+  "al_bulk_periodic": {
+    "energy_ha": -9.241937718901474,
+    "forces_ha_per_bohr": [
+      [
+        1.5350738344712998e-06,
+        -5.21536113715255e-07,
+        1.2487169103990026e-06
+      ],
+      [
+        1.776774206150812e-06,
+        7.005396003643952e-07,
+        -1.0527329321030519e-06
+      ],
+      [
+        -1.576030285071063e-06,
+        -8.858784855694163e-07,
+        -1.0676362131586928e-06
+      ],
+      [
+        -1.735817755551049e-06,
+        7.06874998920276e-07,
+        8.716522348627418e-07
+      ]
+    ],
+    "stress_ha_per_bohr3": [
+      [
+        -0.00011033448561091092,
+        9.525569253590217e-10,
+        -4.673838478074615e-11
+      ],
+      [
+        9.521997492981794e-10,
+        -0.00011033412120311894,
+        -2.09136763398254e-09
+      ],
+      [
+        -4.31224997811938e-11,
+        -2.0878378043542496e-09,
+        -0.00011033435683168457
+      ]
+    ],
+    "_source": "native pGD via make_references.py",
+    "provenance": {
+      "generator": "native-pgd",
+      "binary": "/lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe_pgd/install/complex/dftfe",
+      "binary_stamp": "1515136:1786709054",
+      "np": 24,
+      "use_device": true
+    }
+  }
+}
