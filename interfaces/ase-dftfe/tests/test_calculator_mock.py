@@ -51,8 +51,17 @@ def test_stress_is_voigt6_and_converted(mock_command):
         atoms.calc = calc
         stress = atoms.get_stress()
     assert stress.shape == (6,)
-    # diag(0.01,0.02,0.03) Ha/Bohr^3 -> Voigt [xx,yy,zz,0,0,0]
-    diag = np.array([0.01, 0.02, 0.03]) * (Hartree / Bohr**3)
+    # diag(0.01,0.02,0.03) Ha/Bohr^3 -> Voigt [xx,yy,zz,0,0,0], NEGATED.
+    #
+    # The sign is the point of this assertion, not an incidental detail. ASE
+    # defines sigma = (1/V) dE/deps, and dftfeWrapper::getCellStress() returns
+    # -d_stressTensor while DFT-FE's own printed stress is already in ASE's
+    # convention -- measured in job 8756125, where dE/dV = -1.0958e-04 Ha/Bohr^3
+    # against a printed -1.1035e-04 (same sign, ratio 0.993). So the calculator
+    # undoes the wrapper's flip; see calculator._WRAPPER_STRESS_SIGN. A cell
+    # relaxation driven by the unflipped sign would expand when it should
+    # contract.
+    diag = -np.array([0.01, 0.02, 0.03]) * (Hartree / Bohr**3)
     assert np.allclose(stress[:3], diag)
     assert np.allclose(stress[3:], 0.0)
 

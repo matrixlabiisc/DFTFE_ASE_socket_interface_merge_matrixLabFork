@@ -15,8 +15,10 @@ integrator can drive it — enabling a true apples-to-apples comparison against
 Template-based: a reference ``parameterFile.prm`` (+ its ``domainVectors.inp`` /
 ``pseudo.inp`` and a ``coordinates.inp`` giving the atomic-number + valence
 columns) supplies all DFT parameters. Each ``compute()`` rewrites only the atom
-positions, runs ``<command> <prm>``, and parses energy + **all** per-atom forces
-(and stress if present). Periodic systems get fractional coordinates; otherwise
+positions, runs ``<command> <prm>``, and parses energy + **all** per-atom forces.
+Cell stress is parsed on request by :meth:`FileBackend._parse_stress`, not by
+``_parse`` -- ``compute()`` does not return it, because this backend's callers ask
+for energy and forces. Periodic systems get fractional coordinates; otherwise
 Cartesian Bohr — matching DFT-FE's coordinates.inp convention.
 """
 
@@ -85,12 +87,21 @@ class FileBackend(Backend):
     # ── coordinates.inp writer (matches DFT-FE convention) ──────────────
     def _write_coordinates(self, work, coords_bohr, cell_bohr, pbc):
         coords = np.asarray(coords_bohr, float)
+        cell = np.asarray(cell_bohr, float)
         periodic = bool(np.any(pbc))
         if periodic:
-            frac = coords @ np.linalg.inv(np.asarray(cell_bohr, float))  # cell rows = vectors
-            rows = frac
+            rows = coords @ np.linalg.inv(cell)  # cell rows = vectors
         else:
-            rows = coords  # Cartesian Bohr
+            # Cartesian Bohr measured from the DOMAIN CENTRE, not the corner.
+            # dft.cc prints this branch under "Cartesian coordinates of atoms
+            # (origin at center of domain)" and uses atomLocations verbatim --
+            # convertToCellCenteredCartesianCoordinates() is only called on the
+            # periodic path. dftfeWrapper::reinit writes the same frame, shifting
+            # by -sum(cell)/2, and io.read_dftfe_atoms undoes exactly that on the
+            # way back. Writing corner-origin here put every atom half a cell
+            # diagonal away from where the caller meant, which for a molecule
+            # centred in its box lands it outside the domain entirely.
+            rows = coords - cell.sum(axis=0) / 2.0
         with open(os.path.join(work, "coordinates.inp"), "w") as fh:
             for (z, val), r in zip(self._z_val, rows):
                 fh.write(f"{z} {val} {r[0]:.14e} {r[1]:.14e} {r[2]:.14e}\n")
@@ -120,6 +131,37 @@ class FileBackend(Backend):
         if forces and len(forces) != natoms:
             forces = forces[:natoms]  # guard against trailing stray matches
         return energy, (forces or None)
+
+    @staticmethod
+    def _parse_stress(text):
+        """The 3x3 cell stress in Ha/Bohr^3, or None if the run computed none.
+
+        Native DFT-FE prints it under "Cell stress (Hartree/Bohr^3)" between two
+        dashed rules, one row per lattice direction. Kept separate from
+        :meth:`_parse` so that method's ``(energy, forces)`` contract is
+        unchanged; only the reference generator asks for stress.
+
+        The last block in the file wins, the same rule ``_parse`` uses for energy:
+        a GEOOPT run prints one per ionic step and the converged one is last.
+        """
+        lines = text.splitlines()
+        rows = None
+        for i, ln in enumerate(lines):
+            if "Cell stress" not in ln:
+                continue
+            found = []
+            for l2 in lines[i + 1:]:
+                m = re.match(r"\s*([-\d.eE+]+)\s+([-\d.eE+]+)\s+([-\d.eE+]+)\s*$", l2)
+                if m:
+                    found.append([float(m.group(g)) for g in (1, 2, 3)])
+                    if len(found) == 3:
+                        break
+                elif found or l2.strip().startswith("---"):
+                    if found:
+                        break
+            if len(found) == 3:
+                rows = found
+        return rows
 
     # ── Backend API ─────────────────────────────────────────────────────
     def compute(self, request: dict) -> dict:

@@ -29,13 +29,38 @@ from ase.calculators.calculator import Calculator, all_changes
 from ase.stress import full_3x3_to_voigt_6_stress
 from ase.units import Bohr, Hartree
 
+from . import geometry
 from .backends.socket import SocketBackend, DFTFEError
 from .binary import select_binary_kind
 from .config import get_profile, resolve_binaries
 from .launchers import detect_launcher, get_launcher
-from .params import BY_KWARG, to_prm_entries
+from .params import (BY_KWARG, DRIVER_OWNED_KEYS, GEOMETRY_KEYS, LEGACY_KEYS,
+                     format_value, to_prm_entries)
 
 log = logging.getLogger("dftfe_ase")
+
+# Sign applied to the stress arriving from dftfeWrapper::getCellStress().
+#
+# ASE defines sigma_ij = (1/V) dE/deps_ij, with P = -Tr(sigma)/3. DFT-FE's own
+# printed "Cell stress (Hartree/Bohr^3)" (configurationalForce.cc:817, the raw
+# d_stressTensor) is ALREADY in that convention, but the wrapper returns
+# -d_stressTensor (dftfeWrapper.cc:1326), so what reaches the socket has the
+# wrong sign for ASE. Undo it here.
+#
+# Measured, not argued (job 8756125): three native single points at a = 7.55 /
+# 7.60 / 7.65 Bohr on the al_bulk deck give dE/dV = -1.0958e-04 Ha/Bohr^3, which
+# for isotropic strain IS sigma_xx. The printed value is -1.1035e-04 -- same
+# sign, ratio 0.993. So the print is right and the wrapper's negation is not.
+# Two arguments had pointed opposite ways and neither was decisive: ASE negates
+# VASP's and LAMMPS's printed stress (vasp.py:863, lammpslib.py:496), but DFT-FE
+# does not need it; and dftfeWrapper.h:271-279 documents both signs at once --
+# prose says "negative of gradient", the formula says +(1/Omega) dE/deps. The
+# formula is the correct half.
+#
+# This belongs upstream in getCellStress(), which would also fix the LAMMPS and
+# i-PI consumers of the same function. Until that lands, the flip lives here --
+# and when it lands, THIS CONSTANT MUST GO BACK TO +1 or the sign flips twice.
+_WRAPPER_STRESS_SIGN = -1
 
 # Typed params kept on the existing per-key C++ path (verified "wired"). Note:
 # mixing_history + dispersion_correction_type are intentionally NOT here — they
@@ -62,12 +87,124 @@ def _serialize_overrides(entries):
     return "@@@".join(f"{e['section'] or ''}|||{e['key']}|||{e['value']}" for e in entries)
 
 
-def _parse_prm_file(path):
-    """Parse a DFT-FE .prm into generic {section,key,value} entries (option A)."""
+# Human-readable name for each route a parameter can arrive by, in increasing
+# order of precedence -- the order dftfeWrapper.cc applies them in.
+_CHANNELS = {
+    "kwarg":     "a typed kwarg",
+    "extra_prm": "extra_prm=",
+    "prm_file":  "prm_file=",
+}
+
+
+def _merge_entries(entries, typed_params=None):
+    """Collapse repeated settings of one .prm parameter, out loud.
+
+    Three routes reach the same DFT-FE key: a typed kwarg (``tolerance=``), an
+    ``extra_prm`` entry, and a line in a ``prm_file`` deck. The C++ side resolves
+    a clash by order -- typed injection first, then the generic override list in
+    sequence (``dftfeWrapper.cc:1017``, *"applied AFTER all typed injection so an
+    explicit user override always wins"*) -- so the last writer wins.
+
+    That precedence is deliberate and worth keeping: "run this benchmark deck,
+    but with a tighter tolerance" is a real workflow. What is not defensible is
+    applying it in silence, which is what happened until now. Asking for one
+    value and getting another with no diagnostic is the same failure as the
+    ambiguous-subsection write this injection path was rewritten to eliminate
+    (PROJECT.md 14.3): the run converges, reports success, and answers a question
+    nobody asked.
+
+    So:
+
+    * same key, same value -- collapsed silently; there is nothing to choose.
+    * same key, different values, **both inside one** ``extra_prm`` **dict** --
+      raises. Two spellings of one target in one dict (``"TOLERANCE"``,
+      ``("SCF parameters", "TOLERANCE")``, ``"SCF parameters|||TOLERANCE"``) have
+      no precedence to appeal to; dict insertion order would decide the physics.
+    * same key, different values, different routes -- warns, naming both values
+      and the winner, and applies the documented precedence. This cannot reject
+      anything that previously ran.
+
+    ``typed_params`` are the wired kwargs, which travel as typed request fields
+    rather than as entries. They are checked too, because a typed kwarg losing to
+    an override is the easiest clash to create and the least visible.
+    """
+    merged, at = [], {}
+    for e in entries:
+        ident = (e["section"] or "", e["key"])
+        src = e.get("_src", "extra_prm")
+        if ident not in at:
+            at[ident] = len(merged)
+            merged.append(e)
+            continue
+
+        prev = merged[at[ident]]
+        if str(prev["value"]) == str(e["value"]):
+            continue  # same answer twice; nothing was overridden
+        where = f"'{ident[1]}'" + (f" in subsection '{ident[0]}'" if ident[0] else " (top level)")
+        if src == prev.get("_src") == "extra_prm":
+            raise ValueError(
+                f"extra_prm sets {where} twice, to {prev['value']!r} and "
+                f"{e['value']!r}. Which one applies would come down to dict "
+                f"ordering, so neither is used. Give this parameter one value, "
+                f"or name the subsections explicitly if you meant two different "
+                f"parameters that share a key."
+            )
+        log.warning(
+            "%s is set more than once: %s gives %r, %s gives %r. Using %r -- "
+            "later routes override earlier ones (kwarg < extra_prm < prm_file). "
+            "Pass it once if that is not what you meant.",
+            where, _CHANNELS.get(prev.get("_src"), prev.get("_src")), prev["value"],
+            _CHANNELS.get(src, src), e["value"], e["value"],
+        )
+        merged[at[ident]] = e
+
+    # A wired kwarg reaches DFT-FE as a typed request field, not as an entry, so
+    # a clash with an override is invisible in the list above.
+    for kwarg, value in (typed_params or {}).items():
+        spec = BY_KWARG.get(kwarg)
+        if spec is None:
+            continue
+        ident = (spec.section or "", spec.prm_key)
+        if ident not in at:
+            continue
+        winner = merged[at[ident]]
+        if str(format_value(spec.dtype, value)) == str(winner["value"]):
+            continue
+        log.warning(
+            "'%s'%s is set both by %s=%r and by %s (%r). Using %r: the generic "
+            "override is applied after all typed injection (dftfeWrapper.cc), so "
+            "it wins.",
+            ident[1], f" in subsection '{ident[0]}'" if ident[0] else "",
+            kwarg, value,
+            _CHANNELS.get(winner.get("_src"), winner.get("_src")), winner["value"],
+            winner["value"],
+        )
+    return merged
+
+
+def read_prm(path):
+    """Parse a DFT-FE ``.prm`` into ``{section, key, value}`` entries.
+
+    ``section`` is the *innermost* subsection name (``""`` at top level), which
+    is what the C++ injector matches on. Three classes of entry are handled
+    specially so that pointing the calculator at a real benchmark deck produces
+    the run the deck describes:
+
+    * geometry / pseudopotential paths (:data:`~dftfe_ase.params.GEOMETRY_KEYS`)
+      are dropped -- the atoms come from the ASE ``Atoms`` object;
+    * DFT-FE v1.0 key spellings are rewritten via
+      :data:`~dftfe_ase.params.LEGACY_KEYS`;
+    * anything removed from DFT-FE is dropped with a warning.
+
+    The warnings matter: deal.II parses ``.prm`` files with
+    ``skip_undefined=true``, so an unrecognised key costs you nothing at parse
+    time and silently changes the algorithm at run time.
+    """
     import re
+
     entries, stack = [], []
     for line in open(path):
-        s = line.strip()
+        s = line.split("#", 1)[0].strip()
         m = re.match(r"subsection\s+(.+)", s)
         if m:
             stack.append(m.group(1).strip())
@@ -77,10 +214,40 @@ def _parse_prm_file(path):
                 stack.pop()
             continue
         m = re.match(r"set\s+([^=]+?)\s*=\s*(.*)", s)
-        if m:
-            entries.append({"section": stack[-1] if stack else "",
-                            "key": m.group(1).strip(), "value": m.group(2).strip()})
+        if not m:
+            continue
+
+        section = stack[-1] if stack else ""
+        key, value = m.group(1).strip(), m.group(2).strip()
+
+        if key in GEOMETRY_KEYS:
+            log.debug("%s: ignoring geometry entry %r (atoms come from ASE)", path, key)
+            continue
+
+        if key in DRIVER_OWNED_KEYS:
+            log.debug("%s: ignoring driver entry %r (set by the calculator)", path, key)
+            continue
+
+        if (section, key) in LEGACY_KEYS:
+            replacement = LEGACY_KEYS[(section, key)]
+            if replacement is None:
+                log.warning(
+                    "%s: '%s' (subsection '%s') no longer exists in DFT-FE; ignored. "
+                    "The run will use current defaults for this behaviour.",
+                    path, key, section,
+                )
+                continue
+            section, new_key = replacement
+            log.warning("%s: '%s' renamed to '%s'; using the current spelling.",
+                        path, key, new_key)
+            key = new_key
+
+        entries.append({"section": section, "key": key, "value": value})
     return entries
+
+
+# Back-compat alias for the private name this used to have.
+_parse_prm_file = read_prm
 
 
 def _extra_prm_entries(extra):
@@ -92,7 +259,21 @@ def _extra_prm_entries(extra):
         elif "|||" in k:
             section, key = k.split("|||", 1)
         else:
-            spec = next((s for s in BY_KWARG.values() if s.prm_key == k), None)
+            matches = [s for s in BY_KWARG.values() if s.prm_key == k]
+            sections = {s.section for s in matches}
+            if len(sections) > 1:
+                # TOLERANCE and MAXIMUM ITERATIONS each exist in both `SCF
+                # parameters` and `Poisson problem parameters`. Picking the
+                # first match silently wrote one when the user meant the other
+                # -- the same silent wrong-subsection write this whole injection
+                # path was rewritten to eliminate. Make them say which.
+                raise ValueError(
+                    f"extra_prm key {k!r} is ambiguous: DFT-FE declares it in "
+                    f"{sorted(s or '(top level)' for s in sections)}. Name the "
+                    f"subsection explicitly, e.g. "
+                    f"{{({sorted(sections)[0]!r}, {k!r}): value}}."
+                )
+            spec = matches[0] if matches else None
             section, key = (spec.section or "", spec.prm_key) if spec else ("", k)
         out.append({"section": section or "", "key": key, "value": v})
     return out
@@ -113,6 +294,7 @@ class DFTFE(Calculator):
         backend=None,
         cluster: str | None = None,
         launcher: str | None = None,
+        launcher_args=(),
         nproc: int | None = None,
         gpus_per_task: int | None = None,
         dftfe_real: str | None = None,
@@ -139,6 +321,16 @@ class DFTFE(Calculator):
         self.verbosity = verbosity
         self.debug_timing = debug_timing
         self.timing = None  # dict of the last call's timing breakdown
+        # Backend.start() (mpiexec spawn + MPI init + handshake) runs lazily on
+        # the first compute(). Track it so its cost is charged to startup once,
+        # and never to per-step interface overhead.
+        self._startup_counted = False
+        # Rigid offset placing the atoms inside the cell along non-periodic
+        # axes, held fixed for the whole trajectory. See _placed_coords().
+        self._open_shift = None
+        self._open_shift_cell = None
+        self._open_shift_natoms = None
+        self._stress_shift_warned = False
 
         # Pseudopotential encoding: dict -> "DICT|El:path|..." ; else path/string.
         if isinstance(psp_path, dict):
@@ -158,12 +350,20 @@ class DFTFE(Calculator):
         # Generic .prm overrides: "planned" kwargs (B) + extra_prm dict + full
         # .prm file (A) -> one {section,key,value} list applied by the C++
         # generic injector. No per-parameter sed, no silent defaulting.
-        entries = to_prm_entries({k: v for k, v in params.items()
-                                  if v is not None and k in _GENERIC_KWARGS})
+        #
+        # Each entry is tagged with the route it came from, because the same
+        # parameter can arrive by more than one and the loser has to be named in
+        # the diagnostic -- see _merge_entries.
+        entries = [dict(e, _src="kwarg") for e in
+                   to_prm_entries({k: v for k, v in params.items()
+                                   if v is not None and k in _GENERIC_KWARGS})]
         if extra_prm:
-            entries += _extra_prm_entries(extra_prm)
+            entries += [dict(e, _src="extra_prm")
+                        for e in _extra_prm_entries(extra_prm)]
         if prm_file:
-            entries += _parse_prm_file(prm_file)
+            entries += [dict(e, _src="prm_file")
+                        for e in _parse_prm_file(prm_file)]
+        entries = _merge_entries(entries, self._params)
         self._prm_overrides = _serialize_overrides(entries)
 
         # Backend connection settings retained for (possibly lazy) construction.
@@ -191,12 +391,18 @@ class DFTFE(Calculator):
             self._binaries = resolve_binaries(
                 real=dftfe_real, complex=dftfe_complex, bin_dir=bin_dir, cluster=cluster
             )
+            # launcher_args land between the launcher's own flags and the binary
+            # -- the slot for site placement options and rank wrappers, e.g.
+            # Aurora's ["--ppn", "12", "gpu_tile_compact.sh"], which is how one
+            # rank gets bound to each of the 12 GPU tiles on a node.
+            launcher_kwargs = dict(gpus_per_task=gpus_per_task,
+                                   extra_args=tuple(launcher_args))
             if launcher is not None:
-                self._launcher = get_launcher(launcher, gpus_per_task=gpus_per_task)
+                self._launcher = get_launcher(launcher, **launcher_kwargs)
             elif profile is not None:
-                self._launcher = get_launcher(profile.launcher, gpus_per_task=gpus_per_task)
+                self._launcher = get_launcher(profile.launcher, **launcher_kwargs)
             else:
-                self._launcher = detect_launcher(gpus_per_task=gpus_per_task)
+                self._launcher = detect_launcher(**launcher_kwargs)
             self._nproc = nproc
 
     # ── launch construction ────────────────────────────────────────────
@@ -226,6 +432,85 @@ class DFTFE(Calculator):
             argv = self.build_launch_argv(atoms.get_pbc())
             self.backend = self._make_socket_backend(argv)
 
+    # ── geometry ───────────────────────────────────────────────────────
+    def _placed_coords(self):
+        """Positions to send: rigidly translated inside the cell if DFT-FE needs it.
+
+        The translation is computed **once** and then reused for the whole
+        trajectory. That matters: recomputing it per step would let the system
+        creep relative to the finite-element mesh as the atoms relax, and two
+        steps whose energies are compared would no longer sit at the same place
+        in their own vacuum. A fixed offset keeps the frame constant.
+
+        Once frozen it is never revised, and both ways it could go stale raise
+        rather than silently adjusting:
+
+        * **The cell changed.** DFT-FE would not pick it up anyway --
+          ``socket_interface.cc`` handles displacements per step but explicitly
+          omits cell deformation ("omitting complex cell deformation logic"), so
+          the solver still holds the cell from ``reinit``. Re-deriving an offset
+          against ASE's new cell would place atoms for a box DFT-FE does not
+          have.
+        * **An atom left the cell mid-run.** Re-centring here is not a small
+          correction: the offset moves by roughly the distance the system
+          drifted, and ``moveAtoms.cc:244`` triggers a full remesh once any
+          displacement exceeds ``break1 = 1.0`` Bohr. The whole system would
+          jump through the mesh in one "relaxation step", putting that energy on
+          a different mesh from every energy before it -- exactly the comparison
+          the freeze exists to protect. For a NEB sharing one calculator it
+          would give images on different mesh placements and an egg-box error in
+          the barrier.
+
+        Both mean the vacuum padding is too thin for the trajectory being run,
+        which is the user's call to make, not ours to paper over.
+
+        ``self.atoms`` is never mutated: ASE (and any optimizer holding it) owns
+        those positions, and they must stay continuous.
+        """
+        positions = self.atoms.get_positions()
+        cell = self.atoms.get_cell()[:]
+        pbc = self.atoms.get_pbc()
+
+        if pbc.all():
+            return positions
+
+        cached = self._open_shift
+        if cached is None:
+            placed, shift = geometry.place_inside(positions, cell, pbc,
+                                                  context=self._log_file)
+            self._open_shift = shift
+            self._open_shift_cell = cell.copy()
+            self._open_shift_natoms = len(positions)
+            return placed
+
+        if not np.array_equal(cell, self._open_shift_cell):
+            raise DFTFEError(
+                "the cell changed during a run with a non-periodic direction. "
+                "DFT-FE does not adopt a new cell over the socket -- it still "
+                "holds the one from reinit -- so anything computed after this "
+                "point would use the old box. Variable-cell relaxation is not "
+                "supported on this path; run it as separate calculators, one "
+                "fixed cell each."
+            )
+        if len(positions) != self._open_shift_natoms:
+            raise DFTFEError(
+                f"atom count changed ({self._open_shift_natoms} -> "
+                f"{len(positions)}) on a calculator holding a placement offset. "
+                "Use a fresh calculator per system rather than reusing one."
+            )
+
+        if not geometry.needs_shift(positions + cached, cell, pbc):
+            return positions + cached
+
+        raise DFTFEError(
+            "an atom moved outside the cell along a non-periodic direction "
+            "during the run. Re-centring now would translate the whole system "
+            "far enough to force a remesh (moveAtoms.cc break1 = 1.0 Bohr), so "
+            "this step's energy would sit on a different mesh from the previous "
+            "steps and could not be compared with them. Add vacuum along the "
+            "open direction and restart."
+        )
+
     # ── ASE Calculator API ─────────────────────────────────────────────
     def calculate(self, atoms=None, properties=("energy",), system_changes=all_changes):
         super().calculate(atoms, properties, system_changes)
@@ -233,9 +518,47 @@ class DFTFE(Calculator):
         t_start = time.perf_counter()
         want_stress = self.compute_stress or ("stress" in properties)
 
+        # Positions are sent unwrapped along PERIODIC axes. DFT-FE folds those
+        # into the cell itself, in reinit() and in
+        # updateAtomPositionsAndMoveMesh(), using its own periodic wrap. Keeping
+        # the ASE-side positions continuous is what lets LBFGS/NEB build
+        # coherent optimizer state: wrapping here would make a boundary crossing
+        # look like a full-lattice-vector jump to the optimizer.
+        #
+        # Non-periodic axes get no such folding, from us or from DFT-FE -- there
+        # is no image to fold to. DFT-FE requires the atom to be strictly inside
+        # and aborts otherwise, so the one legal repair is a rigid translation of
+        # the whole system (see geometry.py). Distances, energy and forces are
+        # invariant under it; only the placement in the vacuum changes.
+        coords = self._placed_coords()
+
+        # Measured, not assumed (job 8753281): a rigid translation along an open
+        # axis is NOT numerically free. The mesh is fixed in the cell, so moving
+        # the system through it moves the discretisation error. On an 8-atom Al
+        # slab shifted 2 A: dE 5.5e-05 Ha, max|dF| 1.1e-05 Ha/Bohr, and stress
+        # 2.0e-04 relative -- the largest relative effect of the three. Not SCF
+        # noise; a 100x tighter tolerance moved dE by 5e-09 Ha.
+        #
+        # Stress is called out separately because CELL STRESS is only forced off
+        # when ALL axes are open (dftfeWrapper.cc:834), so a semi-periodic slab
+        # keeps it on -- exactly the case that can carry an offset -- and it is
+        # the component most sensitive to where the system sits.
+        if (want_stress and self._open_shift is not None
+                and self._open_shift.any() and not self._stress_shift_warned):
+            self._stress_shift_warned = True
+            log.warning(
+                "stress requested on a cell with a non-periodic direction whose "
+                "atoms were rigidly translated by (%.4f, %.4f, %.4f) A. Stress is "
+                "measurably placement-dependent (~2e-4 relative for a 2 A shift), "
+                "more so than energy or forces. It is consistent within this run, "
+                "but do not compare it against a run whose atoms sit elsewhere in "
+                "the cell.",
+                *self._open_shift,
+            )
+
         request = {
             "cmd": "run",
-            "coords": (self.atoms.get_positions() / Bohr).tolist(),
+            "coords": (coords / Bohr).tolist(),
             "cell": (self.atoms.get_cell()[:] / Bohr).tolist(),
             "numbers": self.atoms.get_atomic_numbers().tolist(),
             "pbc": self.atoms.get_pbc().tolist(),
@@ -256,42 +579,89 @@ class DFTFE(Calculator):
         if result.get("forces") is not None:
             self.results["forces"] = np.array(result["forces"], float) * (Hartree / Bohr)
         if want_stress and result.get("stress") is not None:
-            stress = np.array(result["stress"], float) * (Hartree / Bohr**3)
+            stress = (np.array(result["stress"], float)
+                      * _WRAPPER_STRESS_SIGN * (Hartree / Bohr**3))
             if stress.shape == (3, 3):
                 stress = full_3x3_to_voigt_6_stress(stress)
             self.results["stress"] = stress
 
-        # Timing breakdown. The interface overhead in a multi-step workflow has
-        # TWO parts, both of which recur every step:
-        #   ase_overhead  = total - round_trip     (Python: unit conv, request build)
-        #   streaming     = round_trip - dft_compute  (serialize + send positions,
-        #                                               recv forces; MPI bcast; etc.)
-        # dft_compute (pure DFT-FE work) is reported by the C++ driver so it can
-        # be subtracted out. interface_overhead = ase_overhead + streaming.
+        # Timing breakdown.
+        #
+        # On the first calculate() of a process, backend.compute() lazily calls
+        # backend.start(), which spawns mpiexec, waits for MPI init across every
+        # rank, and completes the TCP handshake. That cost lands inside this
+        # timed window but outside last_wait_s, so it would otherwise be counted
+        # as Python overhead. It is NOT interface overhead: a native DFT-FE run
+        # spawns the identical mpiexec and pays the same launch, it simply does
+        # not appear in DFT-FE's internal timer, which starts after MPI init.
+        # Charging it to the interface would report a cost the interface does
+        # not introduce, so it is subtracted out and reported separately.
+        #
+        #   startup      = backend.startup_s        (launch; common to both arms)
+        #   python       = total - round_trip - startup  (unit conv, request build,
+        #                                                 response parse)
+        #   streaming    = round_trip - dft_compute (serialize + send, recv)
+        #   interface    = python + streaming       (what ASE actually adds)
+        #
+        # Only `interface` recurs every step; `startup` is paid once per process.
         total = time.perf_counter() - t_start
         round_trip = getattr(self.backend, "last_wait_s", None)
         if round_trip is not None:
             dft_compute = result.get("compute_time") if isinstance(result, dict) else None
-            ase_overhead = total - round_trip
+            b = self.backend
+            if not self._startup_counted:
+                self._startup_counted = True
+                spawn = getattr(b, "spawn_s", 0.0) or 0.0
+                boot = getattr(b, "boot_s", 0.0) or 0.0
+                bind = getattr(b, "bind_s", 0.0) or 0.0
+                shake = getattr(b, "handshake_s", 0.0) or 0.0
+            else:
+                spawn = boot = bind = shake = 0.0
+
             streaming = (round_trip - dft_compute) if dft_compute is not None else None
-            interface = ase_overhead + (streaming or 0.0)
+            python_overhead = total - round_trip - (bind + spawn + boot + shake)
+
+            # BUCKET 1 -- cost a native DFT-FE run pays too. Not attributable to
+            # the interface: same mpiexec, same rank count, same MPI_Init, same
+            # solver. Invisible in a native log only because DFT-FE's internal
+            # timer starts after MPI_Init.
+            dftfe_s = spawn + boot + (dft_compute or 0.0)
+
+            # BUCKET 2 -- cost that exists ONLY because of the interface.
+            interface_s = bind + shake + (streaming or 0.0) + python_overhead
+
             self.timing = {
                 "total_s": total,
-                "round_trip_s": round_trip,
+                # bucket 1: also incurred by native
+                "dftfe_s": dftfe_s,
+                "dftfe_spawn_s": spawn,
+                "dftfe_boot_s": boot,
                 "dft_compute_s": dft_compute,
+                # bucket 2: interface-only
+                "interface_s": interface_s,
+                "socket_bind_s": bind,
+                "handshake_s": shake,
                 "streaming_overhead_s": streaming,
-                "ase_overhead_s": ase_overhead,
-                "interface_overhead_s": interface,
-                "interface_overhead_pct": 100.0 * interface / total if total > 0 else 0.0,
+                "python_overhead_s": python_overhead,
+                # ratio of bucket 2 to the work itself
+                "interface_pct": 100.0 * interface_s / dftfe_s if dftfe_s > 0 else 0.0,
+                # legacy aliases
+                "round_trip_s": round_trip,
+                "ase_overhead_s": python_overhead,
+                "interface_overhead_s": interface_s,
+                "interface_overhead_pct": 100.0 * interface_s / dftfe_s if dftfe_s > 0 else 0.0,
             }
             if self.debug_timing:
-                stream_str = f"{streaming:.4f}s" if streaming is not None else "n/a (old binary)"
-                dc_str = f"{dft_compute:.4f}s" if dft_compute is not None else "n/a"
+                dc = f"{dft_compute:.4f}" if dft_compute is not None else "n/a"
+                st = f"{streaming:.6f}" if streaming is not None else "n/a"
                 msg = (
-                    f"[dftfe_ase debug_timing] total={total:.4f}s | "
-                    f"DFT compute={dc_str} | streaming={stream_str} | "
-                    f"ASE={ase_overhead:.4f}s | interface overhead="
-                    f"{interface:.4f}s ({self.timing['interface_overhead_pct']:.2f}%)"
+                    f"[dftfe_ase debug_timing] total={total:.4f}s\n"
+                    f"  DFT-FE (native pays too) = {dftfe_s:.4f}s "
+                    f"[spawn={spawn:.4f} boot={boot:.4f} compute={dc}]\n"
+                    f"  INTERFACE (ours)         = {interface_s:.6f}s "
+                    f"[bind={bind:.6f} handshake={shake:.6f} "
+                    f"streaming={st} python={python_overhead:.6f}] "
+                    f"= {self.timing['interface_pct']:.4f}% of DFT-FE"
                 )
                 log.info(msg)
                 print(msg, flush=True)

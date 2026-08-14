@@ -18,6 +18,10 @@
 *.e*
 #*.o*  ## don't build in-source!
 
+# ...but benchmark job scripts are a deliverable, not scratch: without these the
+# study directories ship with no way to launch anything.
+!interfaces/ase-dftfe/tests/**/run_*.pbs
+
 # Executables
 *.exe
 *.out
