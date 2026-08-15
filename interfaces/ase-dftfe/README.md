@@ -109,18 +109,18 @@ src/dftfe_ase/
 
 ## Testing
 
-Unit and mock-integration tests need no DFT-FE binary (a fake DFT-FE speaks the
-protocol):
-
 ```bash
-pytest -q                         # locally
-sbatch tests/run_pytest.slurm     # on an HPC login node (submits to a compute node)
+pytest -q
 ```
 
-These need no DFT-FE binary. End-to-end validation against a real build lives in
-`automated_tests/` (six cases compared against native DFT-FE decks); the
-cluster job scripts that drive it are site-specific and live outside this repo,
-in [install_DFTFE](https://github.com/dftfeDevelopers/install_DFTFE).
+A fake DFT-FE speaks the protocol, so the suite needs no binary, no MPI and no
+scheduler, and finishes in seconds. It runs anywhere, including a login node.
+
+End-to-end validation against a real build lives in `automated_tests/`: six
+cases run twice, once through the socket and once as a native `.prm` deck on the
+same binary, and compared. That needs an allocation, so the job scripts that
+drive it are site-specific and live outside this repo, in
+[install_DFTFE](https://github.com/dftfeDevelopers/install_DFTFE).
 
 ## License
 
