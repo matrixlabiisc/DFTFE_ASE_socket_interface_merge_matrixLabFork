@@ -26,7 +26,7 @@
     "_source": "native pGD via make_references.py",
     "provenance": {
       "generator": "native-pgd",
-      "binary": "/lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe_pgd/install/cpu_real/dftfe",
+      "binary": "cpu_real/dftfe",
       "binary_stamp": "1471152:1786643875",
       "np": 64,
       "use_device": false
@@ -50,7 +50,7 @@
     "_source": "native pGD via make_references.py",
     "provenance": {
       "generator": "native-pgd",
-      "binary": "/lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe_pgd/install/cpu_complex/dftfe",
+      "binary": "cpu_complex/dftfe",
       "binary_stamp": "1471152:1786043565",
       "np": 64,
       "use_device": false
@@ -100,7 +100,7 @@
     "_source": "native pGD via make_references.py",
     "provenance": {
       "generator": "native-pgd",
-      "binary": "/lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe_pgd/install/cpu_complex/dftfe",
+      "binary": "cpu_complex/dftfe",
       "binary_stamp": "1471152:1786043565",
       "np": 64,
       "use_device": false
@@ -124,7 +124,7 @@
     "_source": "native pGD via make_references.py",
     "provenance": {
       "generator": "native-pgd",
-      "binary": "/lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe_pgd/install/cpu_real/dftfe",
+      "binary": "cpu_real/dftfe",
       "binary_stamp": "1471152:1786643875",
       "np": 64,
       "use_device": false
@@ -148,7 +148,7 @@
     "_source": "native pGD via make_references.py",
     "provenance": {
       "generator": "native-pgd",
-      "binary": "/lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe_pgd/install/cpu_real/dftfe",
+      "binary": "cpu_real/dftfe",
       "binary_stamp": "1471152:1786643875",
       "np": 64,
       "use_device": false
@@ -220,7 +220,7 @@
     "_source": "native pGD via make_references.py",
     "provenance": {
       "generator": "native-pgd",
-      "binary": "/lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe_pgd/install/cpu_real/dftfe",
+      "binary": "cpu_real/dftfe",
       "binary_stamp": "1471152:1786643875",
       "np": 64,
       "use_device": false
