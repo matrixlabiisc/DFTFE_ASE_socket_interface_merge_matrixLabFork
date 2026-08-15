@@ -117,8 +117,10 @@ pytest -q                         # locally
 sbatch tests/run_pytest.slurm     # on an HPC login node (submits to a compute node)
 ```
 
-An end-to-end smoke test against a real GPU build is provided in
-`tests/smoke_real_n2.py` / `tests/run_smoke_real.slurm`.
+These need no DFT-FE binary. End-to-end validation against a real build lives in
+`automated_tests/` (six cases compared against native DFT-FE decks); the
+cluster job scripts that drive it are site-specific and live outside this repo,
+in [install_DFTFE](https://github.com/dftfeDevelopers/install_DFTFE).
 
 ## License
 
