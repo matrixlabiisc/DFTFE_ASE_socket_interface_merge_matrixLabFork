@@ -1,0 +1,58 @@
+==========================================
+ASE-DFTFE Automated Test Suite (Aurora)
+Job ID   : 8755816
+Nodes    : 1
+Tasks    : 64
+Host     : x4218c6s1b0n0
+Started  : Fri 14 Aug 2026 10:55:32 AM UTC
+==========================================
+-rwxr-xr-x 1 phanim DFTCalc2 1475920 2026-08-13_15:40:15 /lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe/install/cpu_real/dftfe
+-rwxr-xr-x 1 phanim DFTCalc2 1475920 2026-08-13_15:40:55 /lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe/install/cpu_complex/dftfe
+ASE-DFTFE Test Suite  —  20260814_105533
+============================================================
+
+Running: co2_nonperiodic ...
+  reference: native pGD (dftfe), np=64
+[PASS  ] co2_nonperiodic
+  energy = -3.7649505036e+01 Ha  |  ref = -3.7649505036e+01 Ha  |  diff = 0.000e+00 Ha
+  max |F_computed - F_ref| = 0.000e+00 Ha/Bohr  (tol 1e-8, worst: atom 0 x)
+
+Running: n2_nonperiodic ...
+  reference: native pGD (dftfe), np=64
+[PASS  ] n2_nonperiodic
+  energy = -2.0641599801e+01 Ha  |  ref = -2.0641599801e+01 Ha  |  diff = 0.000e+00 Ha
+  max |F_computed - F_ref| = 0.000e+00 Ha/Bohr  (tol 1e-8, worst: atom 0 x)
+
+Running: al_slab_semiperiodic ...
+test_al_slab_semiperiodic_A.log: atoms lay outside the cell along a non-periodic direction; translating all of them rigidly by (0.0000, 0.0000, 10.8309) A to centre them. The structure is unchanged -- every interatomic distance is preserved exactly -- but the computed energy is placement-dependent at the ~1e-5 Ha level (the FE mesh is fixed in the cell), so this run's energies are comparable with each other and NOT with a run at a different placement.
+  reference: native pGD (dftfe), np=64
+[PASS  ] al_slab_semiperiodic
+  energy = -1.8415566507e+01 Ha  |  ref = -1.8415566507e+01 Ha  |  diff = 2.629e-13 Ha
+  max |F_computed - F_ref| = 4.947e-12 Ha/Bohr  (tol 1e-8, worst: atom 2 x)
+
+Running: graphene_periodic ...
+  reference: native pGD (dftfe), np=64
+[PASS  ] graphene_periodic
+  energy = -1.1401436764e+01 Ha  |  ref = -1.1401436764e+01 Ha  |  diff = 0.000e+00 Ha
+  max |F_computed - F_ref| = 0.000e+00 Ha/Bohr  (tol 1e-8, worst: atom 0 x)
+
+Running: al_bulk_periodic ...
+  reference: native pGD (dftfe), np=64
+[PASS  ] al_bulk_periodic
+  energy = -9.2419377190e+00 Ha  |  ref = -9.2419377190e+00 Ha  |  diff = 0.000e+00 Ha
+
+============================================================
+SUMMARY
+============================================================
+  [PASS  ] co2_nonperiodic
+  [PASS  ] n2_nonperiodic
+  [PASS  ] al_slab_semiperiodic
+  [PASS  ] graphene_periodic
+  [PASS  ] al_bulk_periodic
+------------------------------------------------------------
+PASS=5  FAIL=0  SEEDED=0
+
+Results written to: test_results_20260814_105533.txt
+
+Finished : Fri 14 Aug 2026 10:59:06 AM UTC
+Exit code: 0

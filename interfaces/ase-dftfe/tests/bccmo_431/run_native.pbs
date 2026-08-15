@@ -1,0 +1,45 @@
+#!/bin/bash
+# ---------------------------------------------------------------------
+# Native (file-driven) arm of the BCC-Mo 431-atom scaling study, on Aurora.
+#
+# Submit via ./submit.sh native <nodes> -- it sets -l select and NODES together,
+# which have to agree. Do not qsub this directly.
+# ---------------------------------------------------------------------
+#PBS -A DFTCalc2
+#PBS -q debug-scaling
+#PBS -l walltime=01:00:00
+#PBS -l filesystems=flare:home
+#PBS -l place=scatter
+#PBS -j oe
+
+set -euo pipefail
+
+: "${NODES:?set NODES (use submit.sh)}"
+: "${DFTFE_INSTALL:?set DFTFE_INSTALL to the ase_redesign install prefix}"
+
+RANKS_PER_NODE=12                       # 6 Intel GPUs x 2 tiles
+RANKS=$((NODES * RANKS_PER_NODE))
+RUNDIR="${PBS_O_WORKDIR:-$PWD}"
+PRM="parameterFileAurora${NODES}Nodes.prm"
+OUT="native_${NODES}nodes.out"
+
+cd "$RUNDIR"
+
+# Gamma-point calculation -> real binary.
+BINARY="${DFTFE_INSTALL}/real/dftfe"
+[[ -x "$BINARY" ]] || { echo "no dftfe binary at $BINARY" >&2; exit 1; }
+[[ -f "$PRM" ]] || { echo "no deck $PRM -- run make_decks.py" >&2; exit 1; }
+[[ -f coordinates.inp ]] || { echo "no coordinates.inp -- run make_inputs.py" >&2; exit 1; }
+
+echo "=== native arm: ${NODES} nodes, ${RANKS} ranks, $(date -u) ==="
+echo "binary : $BINARY"
+echo "deck   : $PRM"
+
+# gpu_tile_compact.sh binds one rank to each GPU tile. Without it every rank on
+# a node lands on tile 0.
+mpiexec -n "$RANKS" --ppn "$RANKS_PER_NODE" \
+    gpu_tile_compact.sh "$BINARY" "$PRM" > "$OUT" 2>&1
+
+echo "=== done, $(date -u) ==="
+grep -E "Total free energy|Total scf solve|Elapsed wall time" "$OUT" | tail -5 || true
+echo "wrote $OUT"
