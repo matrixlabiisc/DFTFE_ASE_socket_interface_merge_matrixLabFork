@@ -1,2 +1,0 @@
-#!/bin/bash
-exec /opt/aurora/26.26.0/support/tools/mpi_wrapper_utils/gpu_tile_compact.sh /lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe/install/real/dftfe "$@"

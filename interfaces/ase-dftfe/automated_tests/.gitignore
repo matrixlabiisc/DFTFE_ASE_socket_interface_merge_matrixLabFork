@@ -6,3 +6,17 @@ test_results_*.txt
 *.traj
 *.xyz
 forces.txt*
+
+# Scheduler job logs and per-job scratch. These were committed once by a broad
+# `git add -A` after a `git rm --cached` (which leaves the file on disk, so any
+# later add re-stages it). 2.9 MB of run output reached origin that way.
+*.o[0-9]*
+*.e[0-9]*
+*.out
+gpu_shims_*/
+
+# Native decks + outputs the references are generated FROM. The distilled
+# numbers live in references.json / references.gpu.json, which are tracked; these
+# are the 2 MB audit trail behind them and are regenerable (item 35).
+native_refs/
+native_refs_gpu/
