@@ -1,0 +1,78 @@
+==========================================
+ASE-DFTFE Automated Test Suite (Aurora, GPU)
+Job ID   : 8756039
+Tasks    : 24  (one per GPU tile)
+Host     : x4007c1s0b0n0
+Started  : Fri 14 Aug 2026 01:07:20 PM UTC
+==========================================
+-rwxr-xr-x 1 phanim DFTCalc2 1519912 2026-08-14_12:13:33 /lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe/install/real/dftfe
+    SYCL/level-zero libs linked: 10
+-rwxr-xr-x 1 phanim DFTCalc2 1519912 2026-08-14_12:20:50 /lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe/install/complex/dftfe
+    SYCL/level-zero libs linked: 10
+tile wrapper: /opt/aurora/26.26.0/support/tools/mpi_wrapper_utils/gpu_tile_compact.sh
+shims:
+#!/bin/bash
+exec /opt/aurora/26.26.0/support/tools/mpi_wrapper_utils/gpu_tile_compact.sh /lus/flare/projects/DFTCalc2/Mehul/install_DFTFE/dftfe/install/real/dftfe "$@"
+references: references.gpu.json  (use_device=True)
+ASE-DFTFE Test Suite  —  20260814_130721
+============================================================
+
+Running: co2_nonperiodic ...
+  reference: native pGD (dftfe), np=24
+[PASS  ] co2_nonperiodic
+  energy = -3.7649505037e+01 Ha  |  ref = -3.7649505037e+01 Ha  |  diff = 3.766e-13 Ha
+  max |F_computed - F_ref| = 8.801e-13 Ha/Bohr  (tol 1e-8, worst: atom 2 x)
+
+Running: n2_nonperiodic ...
+  reference: native pGD (dftfe), np=24
+[PASS  ] n2_nonperiodic
+  energy = -2.0641599801e+01 Ha  |  ref = -2.0641599801e+01 Ha  |  diff = 1.243e-13 Ha
+  max |F_computed - F_ref| = 9.314e-14 Ha/Bohr  (tol 1e-8, worst: atom 0 z)
+
+Running: relax_o2 ...
+[relax_o2] converged in 4 LBFGS steps (memory=5, maxstep=0.5 Bohr, matched to the native deck)
+  reference: native pGD (dftfe), np=24
+[PASS  ] relax_o2
+  energy = -3.1762044300e+01 Ha  |  ref = -3.1762044300e+01 Ha  |  diff = 1.634e-13 Ha
+  max |F_computed - F_ref| = 1.393e-11 Ha/Bohr  (tol 1e-8, worst: atom 0 x)
+  relaxed (MEASURED, not gated): ASE -3.1764763709e+01 Ha vs native -3.1764763712e+01 Ha  |  ΔE = 2.651e-09 Ha (0.000 meV)
+    max|F|: ASE 1.129e-05, native 7.807e-05 Ha/Bohr (FORCE TOL 1.944690e-04)
+    steps: ASE LBFGS 4, native LBFGS not parsed
+    ASE LBFGS (matched) vs DFT-FE LBFGS: record this ΔE, do not treat it as a pass/fail
+
+Running: al_slab_semiperiodic ...
+test_al_slab_semiperiodic_A.log: atoms lay outside the cell along a non-periodic direction; translating all of them rigidly by (0.0000, 0.0000, 10.8309) A to centre them. The structure is unchanged -- every interatomic distance is preserved exactly -- but the computed energy is placement-dependent at the ~1e-5 Ha level (the FE mesh is fixed in the cell), so this run's energies are comparable with each other and NOT with a run at a different placement.
+  reference: native pGD (dftfe), np=24
+[PASS  ] al_slab_semiperiodic
+  energy = -1.8415566479e+01 Ha  |  ref = -1.8415566479e+01 Ha  |  diff = 1.066e-13 Ha
+  max |F_computed - F_ref| = 7.653e-13 Ha/Bohr  (tol 1e-8, worst: atom 2 y)
+
+Running: graphene_periodic ...
+  reference: native pGD (dftfe), np=24
+[PASS  ] graphene_periodic
+  energy = -1.1401436764e+01 Ha  |  ref = -1.1401436764e+01 Ha  |  diff = 1.332e-13 Ha
+  max |F_computed - F_ref| = 1.004e-13 Ha/Bohr  (tol 1e-8, worst: atom 0 y)
+
+Running: al_bulk_periodic ...
+  reference: native pGD (dftfe), np=24
+[FAIL  ] al_bulk_periodic
+  energy = -9.2419377189e+00 Ha  |  ref = -9.2419377189e+00 Ha  |  diff = 7.798e-13 Ha
+  note: reference carries forces but this case sets compute_forces=False; not compared
+  max |S_computed - S_ref| = 2.207e-04 Ha/Bohr^3  (tol 1e-10, rel 2.0e+00, worst: [0][0]; reference's own asymmetry 3.6e-12, the floor for this bar)
+
+============================================================
+SUMMARY
+============================================================
+  [PASS  ] co2_nonperiodic
+  [PASS  ] n2_nonperiodic
+  [PASS  ] relax_o2
+  [PASS  ] al_slab_semiperiodic
+  [PASS  ] graphene_periodic
+  [FAIL  ] al_bulk_periodic
+------------------------------------------------------------
+PASS=5  FAIL=1  SEEDED=0
+
+Results written to: test_results_20260814_130721.txt
+
+Finished : Fri 14 Aug 2026 01:29:15 PM UTC
+Exit code: 1

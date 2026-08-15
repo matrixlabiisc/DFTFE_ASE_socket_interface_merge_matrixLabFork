@@ -61,7 +61,10 @@ class DFTFEBinaries:
         path = self.real if kind == REAL else self.complex
         if not path:
             raise DFTFEConfigError(
-                f"no {kind!r} DFT-FE binary configured; set it explicitly, via "
-                f"DFTFE_BIN_{kind.upper()}, a cluster profile, or a container path"
+                f"no {kind!r} DFT-FE binary configured. Binary paths are per-user, "
+                f"so no cluster profile ships one. Give it as dftfe_{kind}=..., or "
+                f"bin_dir=..., or set DFTFE_BIN_{kind.upper()} / DFTFE_BIN_DIR, or "
+                f"put {{\"<cluster>\": {{\"bin_dir\": \"...\"}}}} in "
+                f"~/.config/dftfe_ase/profiles.json"
             )
         return path

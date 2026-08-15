@@ -47,7 +47,7 @@ cd DFTFE/interfaces/ase-dftfe
 pip install -e .
 ```
 
-You can now use the calculator anywhere comprehensively via `from dftfe import DFTFE`.
+You can now use the calculator anywhere comprehensively via `from dftfe_ase import DFTFE`.
 
 ---
 
@@ -146,7 +146,7 @@ Inside your notebook cell, you can initialize the calculator as usual. The envir
 
 ```python
 import os
-from dftfe import DFTFE
+from dftfe_ase import DFTFE
 from ase.build import bulk
 
 # Optional: Add library paths if not inherited
@@ -181,7 +181,7 @@ Below is an example demonstrating a fully iterative ground-state calculation usi
 from ase import Atoms
 from ase.units import Bohr, Hartree
 import numpy as np
-from dftfe import DFTFE
+from dftfe_ase import DFTFE
 
 # 1. Define Standard Parameterizations
 box_dims_bohr = np.array([40.0, 40.0, 40.0])
@@ -242,7 +242,7 @@ Below is an example (`relax_graphene.py`) of setting up a periodic Graphene cell
 from ase import Atoms
 from ase.units import Bohr, Hartree
 import numpy as np
-from dftfe import DFTFE
+from dftfe_ase import DFTFE
 from ase.optimize import FIRE
 
 # 1. Define Graphene Cell (Periodic)
@@ -319,7 +319,7 @@ Below is an example (`phonon_cu.py`) using **Phonopy** to calculate the phonon b
 ```python
 from ase import Atoms
 from ase.build import bulk
-from dftfe import DFTFE
+from dftfe_ase import DFTFE
 from phonopy import Phonopy
 from phonopy.structure.atoms import PhonopyAtoms
 import numpy as np
@@ -393,7 +393,7 @@ The interface features a robust Machine-learning (ML) suite designed to extract,
 To record live simulation steps as they happen, initialize the `DatasetRecorder` and pipe your `Atoms` object to it.
 
 ```python
-from dftfe.utils import DatasetRecorder
+from dftfe_ase.utils import DatasetRecorder
 
 recorder = DatasetRecorder("training_data.extxyz", max_force_threshold_ev_ang=100.0)
 
@@ -410,7 +410,7 @@ To recover vast directories of old execution logs generated outside of ASE, leve
 > **Important Note:** In order to automatically resolve the element symbols and structure constraints correctly during extraction, the corresponding `coordinates.inp` file *must* be present in the exact same directory alongside each log file.
 
 ```python
-from dftfe.utils import build_dataset
+from dftfe_ase.utils import build_dataset
 
 build_dataset(
     input_dir="/path/to/old/dftfe/runs/",
@@ -435,7 +435,7 @@ The converter natively handles all internal DFT-FE conventions:
 ### Usage Example
 
 ```python
-from dftfe.utils import cif_to_dftfe, dftfe_to_cif
+from dftfe_ase.utils import cif_to_dftfe, dftfe_to_cif
 
 # 1. CIF to DFT-FE Inputs
 cif_to_dftfe(
@@ -460,7 +460,7 @@ atoms = dftfe_to_cif(
 
 ## Reading Existing DFT-FE Inputs Directly
 
-If you already have a DFT-FE benchmark or run directory containing `coordinates.inp`, `domainVectors.inp`, and a `.prm` parameter file, you do not need to rebuild the structure manually. The `dftfe.utils` submodule provides three functions that read those files directly and either hand you back a live ASE setup or write a standalone Python script for you.
+If you already have a DFT-FE benchmark or run directory containing `coordinates.inp`, `domainVectors.inp`, and a `.prm` parameter file, you do not need to rebuild the structure manually. The `dftfe_ase.utils` submodule provides three functions that read those files directly and either hand you back a live ASE setup or write a standalone Python script for you.
 
 ### The three utilities at a glance
 
@@ -473,7 +473,7 @@ If you already have a DFT-FE benchmark or run directory containing `coordinates.
 ### 1. Parsing a `.prm` file
 
 ```python
-from dftfe.utils import parse_prm
+from dftfe_ase.utils import parse_prm
 
 prm = parse_prm("/path/to/Li2O_scf.prm")
 
@@ -489,7 +489,7 @@ Subsection hierarchy is flattened with `.` separators. All values are automatica
 ### 2. Building atoms + calculator from a directory
 
 ```python
-from dftfe.utils import dftfe_dir_to_atoms
+from dftfe_ase.utils import dftfe_dir_to_atoms
 
 atoms, calc_kwargs = dftfe_dir_to_atoms(
     "/path/to/Li2O_fcc/dftfe",
@@ -523,7 +523,7 @@ atoms, kw = dftfe_dir_to_atoms(
 If you prefer a plain Python file you can inspect, edit, and submit to SLURM:
 
 ```python
-from dftfe.utils import generate_ase_script
+from dftfe_ase.utils import generate_ase_script
 
 generate_ase_script(
     "/path/to/Li2O_fcc/dftfe",
@@ -556,8 +556,8 @@ Li2O_fcc/dftfe/
 The hand-written ASE script (`Li2O_fcc_gs.py`) is a reference implementation that matches the `.prm` exactly:
 
 ```python
-from dftfe import DFTFE
-from dftfe.utils import dftfe_to_atoms
+from dftfe_ase import DFTFE
+from dftfe_ase.utils import dftfe_to_atoms
 
 atoms = dftfe_to_atoms(
     coord_path="coordinates.inp",
@@ -567,7 +567,7 @@ atoms = dftfe_to_atoms(
 
 calc = DFTFE(
     command="mpirun -np 8 /path/to/build_gpu/release/complex/dftfe",
-    host="localhost",
+    bind_host="localhost",
     port=0,
 
     # Mesh — matches prm: MESH SIZE AROUND ATOM=1.2, ATOM BALL RADIUS=6, POLYNOMIAL ORDER=7
@@ -615,7 +615,7 @@ sbatch run_Li2O_fcc_gs.slurm
 
 Or, equivalently, use `generate_ase_script` to auto-produce the same script from the `.prm`:
 ```python
-from dftfe.utils import generate_ase_script
+from dftfe_ase.utils import generate_ase_script
 generate_ase_script(
     "/path/to/Li2O_fcc/dftfe",
     prm_file="Li2O_scf.prm",

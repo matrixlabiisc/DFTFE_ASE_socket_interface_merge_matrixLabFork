@@ -14,6 +14,7 @@ case would have failed by ~2.7e-3 Ha with nothing wrong.
 """
 
 import importlib.util
+import json
 import os
 import sys
 
@@ -541,3 +542,37 @@ def test_flipped_sign_is_rejected(suite):
     assert not ok
     assert diff == pytest.approx(2 * 1.1e-04, rel=1e-6), (
         "a sign flip must show up as twice the stress magnitude")
+
+
+# ── provenance must not carry anyone's directory ───────────────────────────
+#
+# A reference file ships with the package. The energies and forces in it are the
+# point; the absolute path of the binary that produced them is not, and it
+# published one person's scratch directory to every reader. `_binary_id` keeps
+# the half that identifies the build (`cpu_real/dftfe`) and drops the half that
+# identifies the author. Nothing gates on it -- test_suite.CONFIG_KEYS is
+# ("np", "use_device") -- so shortening it costs no strictness.
+
+def test_binary_id_keeps_the_build_and_drops_the_owner(suite):
+    assert suite._binary_id(
+        "/lus/flare/projects/X/someone/install/dftfe_pgd/install/cpu_real/dftfe"
+    ) == "cpu_real/dftfe"
+    assert suite._binary_id("/opt/complex/dftfe") == "complex/dftfe"
+    assert suite._binary_id("dftfe") == "dftfe"
+
+
+@pytest.mark.parametrize("fname", ["references.json", "references.gpu.json"])
+def test_no_reference_provenance_carries_an_absolute_path(fname):
+    path = os.path.join(_AUTO, fname)
+    if not os.path.isfile(path):
+        pytest.skip(f"{fname} not present")
+    with open(path) as fh:
+        refs = json.load(fh)
+    for name, entry in refs.items():
+        if not isinstance(entry, dict):
+            continue
+        binary = (entry.get("provenance") or {}).get("binary")
+        if binary is None:
+            continue
+        assert not os.path.isabs(binary), f"{fname}:{name} ships an absolute path: {binary}"
+        assert binary.count(os.sep) <= 1, f"{fname}:{name} keeps too much path: {binary}"

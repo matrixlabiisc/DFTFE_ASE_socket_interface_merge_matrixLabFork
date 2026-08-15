@@ -9,21 +9,28 @@
 from dftfe_ase import DFTFE
 
 
+# bin_dir is passed explicitly rather than taken from a cluster profile: no
+# shipped profile carries a binary path, because those are per-user (test_config
+# pins that). The cluster still supplies the launcher -- polaris is one of the
+# three public machines that remain in PROFILES.
+_BIN = "/opt/site/build_gpu"
+
+
 def test_kpoints_select_complex_binary():
-    calc = DFTFE(cluster="matrix", nproc=8, mp_grid=(2, 2, 2))
+    calc = DFTFE(cluster="polaris", nproc=8, mp_grid=(2, 2, 2), bin_dir=_BIN)
     argv = calc.build_launch_argv([True, True, True])
-    assert argv[:3] == ["mpirun", "-np", "8"]
+    assert argv[:3] == ["mpiexec", "-n", "8"]
     assert argv[-1].endswith("build_gpu/release/complex/dftfe")
 
 
 def test_gamma_selects_real_binary():
-    calc = DFTFE(cluster="matrix", nproc=8)  # no mp_grid -> gamma-only
+    calc = DFTFE(cluster="polaris", nproc=8, bin_dir=_BIN)  # no mp_grid -> gamma-only
     argv = calc.build_launch_argv([True, True, True])
     assert argv[-1].endswith("build_gpu/release/real/dftfe")
 
 
 def test_nonperiodic_forces_real_even_with_grid():
-    calc = DFTFE(cluster="matrix", nproc=4, mp_grid=(2, 2, 2))
+    calc = DFTFE(cluster="polaris", nproc=4, mp_grid=(2, 2, 2), bin_dir=_BIN)
     argv = calc.build_launch_argv([False, False, False])
     assert argv[-1].endswith("release/real/dftfe")
 

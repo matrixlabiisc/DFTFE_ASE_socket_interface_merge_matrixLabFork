@@ -115,6 +115,20 @@ def load_case(name: str):
     return mod.run
 
 
+def _binary_id(path):
+    """Identify a binary without leaking whose directory it sits in.
+
+    ``/lus/flare/projects/.../Mehul/install_DFTFE/dftfe_pgd/install/cpu_real/dftfe``
+    says which build was used, and also publishes one person's scratch directory
+    into a file that ships with the package. The last two components keep the
+    useful half (``cpu_real/dftfe``, ``complex/dftfe``) and drop the rest; the
+    identity check that actually matters is ``binary_stamp`` (size:mtime), which
+    is unchanged. Nothing gates on this field -- see CONFIG_KEYS.
+    """
+    parts = os.path.normpath(path).split(os.sep)
+    return os.path.join(*parts[-2:]) if len(parts) >= 2 else parts[-1]
+
+
 def provenance(args, kind: str) -> dict:
     """What must be identical for the 1e-10 Ha tolerance to be meaningful.
 
@@ -136,7 +150,7 @@ def provenance(args, kind: str) -> dict:
     except OSError:
         stamp = "unknown"
     return {
-        "binary": os.path.abspath(binary),
+        "binary": _binary_id(binary),
         "binary_stamp": stamp,
         "np": args.np,
         "use_device": bool(args.use_device),
