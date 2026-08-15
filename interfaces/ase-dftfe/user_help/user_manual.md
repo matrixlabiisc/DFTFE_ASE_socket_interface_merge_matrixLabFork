@@ -47,7 +47,7 @@ cd DFTFE/interfaces/ase-dftfe
 pip install -e .
 ```
 
-You can now use the calculator anywhere comprehensively via `from dftfe import DFTFE`.
+You can now use the calculator anywhere comprehensively via `from dftfe_ase import DFTFE`.
 
 ---
 
@@ -146,7 +146,7 @@ Inside your notebook cell, you can initialize the calculator as usual. The envir
 
 ```python
 import os
-from dftfe import DFTFE
+from dftfe_ase import DFTFE
 from ase.build import bulk
 
 # Optional: Add library paths if not inherited
@@ -181,7 +181,7 @@ Below is an example demonstrating a fully iterative ground-state calculation usi
 from ase import Atoms
 from ase.units import Bohr, Hartree
 import numpy as np
-from dftfe import DFTFE
+from dftfe_ase import DFTFE
 
 # 1. Define Standard Parameterizations
 box_dims_bohr = np.array([40.0, 40.0, 40.0])
@@ -242,7 +242,7 @@ Below is an example (`relax_graphene.py`) of setting up a periodic Graphene cell
 from ase import Atoms
 from ase.units import Bohr, Hartree
 import numpy as np
-from dftfe import DFTFE
+from dftfe_ase import DFTFE
 from ase.optimize import FIRE
 
 # 1. Define Graphene Cell (Periodic)
@@ -319,7 +319,7 @@ Below is an example (`phonon_cu.py`) using **Phonopy** to calculate the phonon b
 ```python
 from ase import Atoms
 from ase.build import bulk
-from dftfe import DFTFE
+from dftfe_ase import DFTFE
 from phonopy import Phonopy
 from phonopy.structure.atoms import PhonopyAtoms
 import numpy as np
@@ -556,7 +556,7 @@ Li2O_fcc/dftfe/
 The hand-written ASE script (`Li2O_fcc_gs.py`) is a reference implementation that matches the `.prm` exactly:
 
 ```python
-from dftfe import DFTFE
+from dftfe_ase import DFTFE
 from dftfe.utils import dftfe_to_atoms
 
 atoms = dftfe_to_atoms(
@@ -567,7 +567,7 @@ atoms = dftfe_to_atoms(
 
 calc = DFTFE(
     command="mpirun -np 8 /path/to/build_gpu/release/complex/dftfe",
-    host="localhost",
+    bind_host="localhost",
     port=0,
 
     # Mesh — matches prm: MESH SIZE AROUND ATOM=1.2, ATOM BALL RADIUS=6, POLYNOMIAL ORDER=7
