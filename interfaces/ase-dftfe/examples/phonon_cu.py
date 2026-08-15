@@ -3,7 +3,7 @@ from ase.build import bulk
 import numpy as np
 import matplotlib.pyplot as plt
 
-from dftfe import DFTFE
+from dftfe_ase import DFTFE
 
 from phonopy import Phonopy
 from phonopy.structure.atoms import PhonopyAtoms
@@ -21,8 +21,8 @@ structure.pbc = True
 # DFT-FE Setup
 # =========================
 
-psp_path = "/home/pa01/Mehul/DFTFE/interfaces/ase-dftfe/psp_spms/29_Cu_19_1.7_1.9_pbe_n_v1.0.upf"
-dftfe_bin = "/home/pa01/Mehul/DFTFE/build_gpu/release/real/dftfe"
+psp_path = "/path/to/Cu.upf   # SPMS pseudopotentials are not bundled; supply your own"
+dftfe_bin = "/DFTFE/build/release/real/dftfe"
 
 run_cmd = (
     f"export DFTFE_PSP_PATH={psp_path} && "
@@ -31,7 +31,7 @@ run_cmd = (
 
 calc = DFTFE(
     command=run_cmd,
-    host="localhost",
+    bind_host="localhost",
     port=0,
 
     # Mesh parameters

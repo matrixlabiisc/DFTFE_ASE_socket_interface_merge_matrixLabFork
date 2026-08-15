@@ -1,7 +1,7 @@
 from ase import Atoms
 from ase.units import Bohr, Hartree
 import numpy as np
-from dftfe import DFTFE
+from dftfe_ase import DFTFE
 
 # =========================
 # System Setup (FCC Al)
@@ -42,7 +42,7 @@ run_cmd = (
 
 calc = DFTFE(
     command=run_cmd,
-    host="localhost",
+    bind_host="localhost",
     port=0,
 
     # =========================

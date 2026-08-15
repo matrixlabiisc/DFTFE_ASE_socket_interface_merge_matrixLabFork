@@ -1,7 +1,7 @@
 from ase import Atoms
 from ase.units import Bohr, Hartree
 import numpy as np
-from dftfe import DFTFE
+from dftfe_ase import DFTFE
 from ase.optimize import FIRE
 import os
 
@@ -37,8 +37,8 @@ atoms = Atoms(
 # DFT-FE Setup
 # =========================
 
-psp_path = "/home/pa01/Mehul/DFTFE/interfaces/ase-dftfe/psp_library"
-dftfe_bin = "/home/pa01/Mehul/DFTFE/build_gpu/release/complex/dftfe"
+psp_path = "/DFTFE/interfaces/ase-dftfe/psp_library"
+dftfe_bin = "/DFTFE/build/release/complex/dftfe"
 
 run_cmd = (
     f"export DFTFE_PSP_PATH={psp_path} && "
@@ -47,7 +47,7 @@ run_cmd = (
 
 calc = DFTFE(
     command=run_cmd,
-    host="localhost",
+    bind_host="localhost",
     port=0,
 
     # =========================
