@@ -10,24 +10,38 @@
 Binary-location precedence (highest first):
     explicit kwargs  >  env vars  >  cluster profile  >  container canonical path  >  PATH
 
-Cluster profiles capture the per-machine facts (scheduler, launcher, GPU backend,
-default binary dir, PSP path, modules/env) for the production targets. The MATRIX
-profile is fully populated from the site's working setup; the leadership-machine
-profiles carry scheduler/launcher/backend and expect binary paths from env or a
-site build (see github.com/dftfeDevelopers/install_DFTFE for the native builds).
+Cluster profiles capture the per-machine facts that are true for *every* user of
+that machine: scheduler, launcher, GPU backend, site modules and site-wide
+library paths. They deliberately carry **no binary or pseudopotential paths**,
+because those live in an individual's directory and differ per user even on the
+same cluster. Shipping one person's ``bin_dir`` in the package means every other
+user of that cluster silently resolves to a directory they cannot read.
+
+Per-user facts come from, in order of precedence: explicit kwargs, environment
+variables (``DFTFE_BIN_REAL`` / ``DFTFE_BIN_COMPLEX`` / ``DFTFE_BIN_DIR``), and a
+site file of your own (see :func:`load_site_profiles`). See
+github.com/dftfeDevelopers/install_DFTFE for the native builds.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Dict, Optional
 
 from .binary import DFTFEBinaries, DFTFEConfigError
 
 # Canonical install path inside the container images (see containers/).
 CONTAINER_PREFIX = "/opt/dftfe"
+
+# Where a user's own profile overrides live. ``DFTFE_ASE_CONFIG`` wins if set.
+SITE_CONFIG_ENV = "DFTFE_ASE_CONFIG"
+SITE_CONFIG_PATH = os.path.join(
+    os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
+    "dftfe_ase", "profiles.json",
+)
 
 
 @dataclass
@@ -49,43 +63,97 @@ _DFTFE_THREADS = {
     "DFTFE_NUM_THREADS": "1",
 }
 
+# Only machines any DFT-FE user can plausibly be sitting on: the public
+# leadership systems. Each carries scheduler, launcher and GPU backend and
+# nothing else — no paths, no module names, no site library directories.
+#
+# Institution-local clusters are deliberately NOT here. Their module strings and
+# dependency directories exist on exactly one site, rot on that site's next
+# rebuild, and are unusable to everyone else, so they belong in a user's own
+# profiles.json (see load_site_profiles) rather than in the shipped package.
 PROFILES: Dict[str, ClusterProfile] = {
-    # IISc MATRIX — fully populated from the working site setup.
-    "matrix": ClusterProfile(
-        name="matrix",
-        scheduler="slurm",
-        launcher="mpirun",  # site launches mpirun inside the Slurm allocation
-        gpu_backend="cuda",
-        bin_dir="/home/pa01/Mehul/DFTFE/build_gpu",
-        psp_path="/home/pa01/Mehul/DFTFE/interfaces/ase-dftfe/psp_library",
-        modules=(
-            "spack",
-            "openmpi/5.0.6-gcc-13.3.0-ytficip",
-            "nccl/2.23.4-1-gcc-13.3.0-xyspmp2",
-            "gdrcopy/2.4.1-gcc-13.3.0-dvwa323",
-        ),
-        env={
-            **_DFTFE_THREADS,
-            "LIBRARY_PATH": "/storage/dftfeDependenciesNoMKL/linAlgLibs/install/lib",
-        },
-    ),
-    # Production targets — scheduler/launcher/backend known; binaries via env or
-    # a native install_DFTFE build. bin_dir left None on purpose.
     "polaris": ClusterProfile("polaris", "pbs", "mpiexec", "cuda", env=dict(_DFTFE_THREADS)),
     "aurora": ClusterProfile("aurora", "pbs", "mpiexec", "sycl", env=dict(_DFTFE_THREADS)),
     "frontier": ClusterProfile("frontier", "slurm", "srun", "hip", env=dict(_DFTFE_THREADS)),
-    "pravega": ClusterProfile("pravega", "slurm", "srun", "cuda", env=dict(_DFTFE_THREADS)),
-    "siddhi": ClusterProfile("siddhi", "slurm", "srun", "cuda", env=dict(_DFTFE_THREADS)),
 }
+
+_SITE_CACHE: Optional[Dict[str, ClusterProfile]] = None
+
+
+def _site_config_path(env: Optional[dict] = None) -> str:
+    env = os.environ if env is None else env
+    return env.get(SITE_CONFIG_ENV) or SITE_CONFIG_PATH
+
+
+def load_site_profiles(path: Optional[str] = None) -> Dict[str, ClusterProfile]:
+    """Your own machine facts, layered over the shipped profiles.
+
+    JSON, ``{profile_name: {field: value}}``, read from ``$DFTFE_ASE_CONFIG`` or
+    ``~/.config/dftfe_ase/profiles.json``. Fields override the built-in profile
+    of the same name one at a time, and a name that is not built in defines a new
+    profile (``scheduler`` and ``launcher`` are then required)::
+
+        {"aurora":    {"bin_dir": "/lus/.../my_build", "psp_path": "/home/you/psp"},
+         "mycluster": {"scheduler": "slurm", "launcher": "srun",
+                       "gpu_backend": "cuda", "bin_dir": "/home/you/build"}}
+
+    A malformed file raises rather than being skipped: a config that is silently
+    ignored looks exactly like a config that had no effect, and the user then
+    debugs the wrong thing.
+    """
+    path = path or _site_config_path()
+    if not os.path.isfile(path):
+        return {}
+    try:
+        with open(path) as fh:
+            raw = json.load(fh)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise DFTFEConfigError(f"could not read site profiles from {path}: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise DFTFEConfigError(f"{path}: expected a JSON object of {{profile: {{field: value}}}}")
+
+    allowed = {f for f in ClusterProfile.__dataclass_fields__ if f != "name"}
+    out: Dict[str, ClusterProfile] = {}
+    for pname, fields in raw.items():
+        if not isinstance(fields, dict):
+            raise DFTFEConfigError(f"{path}: profile {pname!r} must be an object, got {type(fields).__name__}")
+        unknown = set(fields) - allowed
+        if unknown:
+            raise DFTFEConfigError(
+                f"{path}: profile {pname!r} has unknown field(s) {sorted(unknown)}; "
+                f"known: {sorted(allowed)}"
+            )
+        if "modules" in fields:
+            fields = {**fields, "modules": tuple(fields["modules"])}
+        base = PROFILES.get(pname)
+        if base is None:
+            missing = {"scheduler", "launcher"} - set(fields)
+            if missing:
+                raise DFTFEConfigError(
+                    f"{path}: {pname!r} is not a built-in profile, so it must define "
+                    f"{sorted(missing)}"
+                )
+            out[pname] = ClusterProfile(name=pname, gpu_backend=fields.pop("gpu_backend", None), **fields)
+        else:
+            out[pname] = replace(base, **fields)
+    return out
 
 
 def get_profile(name: str) -> ClusterProfile:
-    try:
-        return PROFILES[name]
-    except KeyError:
-        raise DFTFEConfigError(
-            f"unknown cluster profile {name!r}; known: {sorted(PROFILES)}"
-        )
+    global _SITE_CACHE
+    if _SITE_CACHE is None:
+        _SITE_CACHE = load_site_profiles()
+    profile = _SITE_CACHE.get(name) or PROFILES.get(name)
+    if profile is None:
+        known = sorted(set(PROFILES) | set(_SITE_CACHE))
+        raise DFTFEConfigError(f"unknown cluster profile {name!r}; known: {known}")
+    return profile
+
+
+def reload_site_profiles() -> None:
+    """Drop the cached site file so the next :func:`get_profile` re-reads it."""
+    global _SITE_CACHE
+    _SITE_CACHE = None
 
 
 def detect_scheduler(env: Optional[dict] = None) -> str:
