@@ -283,7 +283,7 @@ namespace dftfe
 
     if (isGroundState &&
         ((d_dftParamsPtr->reuseDensityGeoOpt == 2 &&
-          d_dftParamsPtr->solverMode == "GEOOPT") ||
+          d_dftParamsPtr->isDensityReuseAcrossIonicStepsMode()) ||
          (d_dftParamsPtr->extrapolateDensity == 2 &&
           d_dftParamsPtr->solverMode == "MD")) &&
         d_dftParamsPtr->spinPolarized != 1 && !d_dftParamsPtr->noncolin)
