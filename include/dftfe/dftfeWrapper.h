@@ -302,10 +302,15 @@ namespace dftfe
     getForcesAtoms() const;
 
     /**
-     * @brief Get cell stress: negative of gradient of DFT free energy
-     * with respect to affine strain components scaled by volume
-     * (Hartree/Bohr^3) units. This function can only
+     * @brief Get cell stress: gradient of DFT free energy with respect to
+     * affine strain components, divided by the cell volume (Hartree/Bohr^3
+     * units). Tension positive, the same tensor and sign that printStress()
+     * writes to the output file. This function can only
      * be called after calling computeDFTFreeEnergy
+     *
+     * Note this is the physics/ASE convention. Consumers wanting the
+     * pressure-positive form used by Quantum ESPRESSO, VASP and the MDI
+     * <STRESS command must negate it, as MDIEngine::send_stress() does.
      *
      * @return cell stress 3 \times 3 matrix given by
      *  sigma[i][j]=\frac{1}{\Omega}\frac{\partial E}{\partial \epsilon_{ij}}

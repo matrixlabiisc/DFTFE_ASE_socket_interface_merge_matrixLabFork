@@ -1321,9 +1321,14 @@ namespace dftfe
     dealii::Tensor<2, 3, double>     cellStressTensor =
       d_dftfeBasePtr->getCellStress();
 
+    // Returned as computed, sigma[i][j] = (1/Omega) dE/deps_ij, which is what
+    // printStress() writes to the output file and what geoOptCell uses as its
+    // optimizer gradient. This used to be negated here; the negation belonged to
+    // the MDI path, where <STRESS is pressure-positive, and it is applied in
+    // MDIEngine::send_stress() instead.
     for (dftfe::uInt i = 0; i < 3; ++i)
       for (dftfe::uInt j = 0; j < 3; ++j)
-        cellStress[i][j] = -cellStressTensor[i][j];
+        cellStress[i][j] = cellStressTensor[i][j];
     return cellStress;
   }
 

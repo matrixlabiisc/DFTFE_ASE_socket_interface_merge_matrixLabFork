@@ -41,26 +41,24 @@ log = logging.getLogger("dftfe_ase")
 
 # Sign applied to the stress arriving from dftfeWrapper::getCellStress().
 #
-# ASE defines sigma_ij = (1/V) dE/deps_ij, with P = -Tr(sigma)/3. DFT-FE's own
-# printed "Cell stress (Hartree/Bohr^3)" (configurationalForce.cc:817, the raw
-# d_stressTensor) is ALREADY in that convention, but the wrapper returns
-# -d_stressTensor (dftfeWrapper.cc:1326), so what reaches the socket has the
-# wrong sign for ASE. Undo it here.
+# +1 since 2026-08-16: the C++ side now returns sigma_ij = (1/Omega) dE/deps_ij
+# directly, which is ASE's convention, so nothing needs undoing here. This
+# constant is kept rather than deleted because the interface has to run against
+# older DFT-FE builds for a long time, and on those it must be -1.
 #
-# Measured, not argued (job 8756125): three native single points at a = 7.55 /
-# 7.60 / 7.65 Bohr on the al_bulk deck give dE/dV = -1.0958e-04 Ha/Bohr^3, which
-# for isotropic strain IS sigma_xx. The printed value is -1.1035e-04 -- same
-# sign, ratio 0.993. So the print is right and the wrapper's negation is not.
-# Two arguments had pointed opposite ways and neither was decisive: ASE negates
-# VASP's and LAMMPS's printed stress (vasp.py:863, lammpslib.py:496), but DFT-FE
-# does not need it; and dftfeWrapper.h:271-279 documents both signs at once --
-# prose says "negative of gradient", the formula says +(1/Omega) dE/deps. The
-# formula is the correct half.
+# The history, since getting it wrong is silent: getCellStress() used to negate
+# d_stressTensor, so the socket, and therefore ASE, saw the wrong sign while
+# DFT-FE's own printed "Cell stress (Hartree/Bohr^3)" had it right. Measured, not
+# argued: job 8756125 gave dE/dV = -1.0958e-04 Ha/Bohr^3 against a printed
+# -1.1035e-04, same sign, ratio 0.993, and for isotropic strain sigma_xx = dE/dV
+# identically; job 8756978 covered the off-diagonal, where the printed sigma_xy
+# crosses zero at e = 0.0872 and the energy curve turns over at e = 0.0862.
+# The negation was correct for exactly one caller, MDIEngine::send_stress(),
+# whose <STRESS wire format is pressure-positive, and it now lives there.
 #
-# This belongs upstream in getCellStress(), which would also fix the LAMMPS and
-# i-PI consumers of the same function. Until that lands, the flip lives here --
-# and when it lands, THIS CONSTANT MUST GO BACK TO +1 or the sign flips twice.
-_WRAPPER_STRESS_SIGN = -1
+# If this is ever set back to -1 against a current binary, al_bulk_periodic fails
+# at exactly twice the stress magnitude. test_flipped_sign_is_rejected pins that.
+_WRAPPER_STRESS_SIGN = +1
 
 # Typed params kept on the existing per-key C++ path (verified "wired"). Note:
 # mixing_history + dispersion_correction_type are intentionally NOT here — they

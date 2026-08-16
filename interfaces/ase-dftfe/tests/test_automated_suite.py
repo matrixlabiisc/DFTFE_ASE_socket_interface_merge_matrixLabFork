@@ -257,7 +257,8 @@ def test_stress_check_passes_on_a_round_trip_and_fails_on_a_nudge(suite):
 
     unit = Hartree / Bohr ** 3
     # No negation: the printed reference is already ASE convention (job 8756125),
-    # and the interface undoes the wrapper's flip on its own side.
+    # and since 2026-08-16 getCellStress() returns that same sign, so both arms
+    # agree without anything being flipped in between.
     m = np.array(ref_stress) * unit
     # Voigt-6 the way ASE builds it: each off-diagonal is the average of the pair,
     # because DFT-FE's printed 3x3 is not exactly symmetric.
@@ -528,10 +529,14 @@ def test_ase_convention_stress_matches_a_printed_convention_reference(suite):
 def test_flipped_sign_is_rejected(suite):
     """The failure mode this cost a GPU run to find: a pure sign flip.
 
-    If _WRAPPER_STRESS_SIGN ever returns to +1 -- e.g. because upstream fixed
-    getCellStress() and this side was not updated with it -- max|dS| comes back at
-    twice the stress magnitude with relative error ~2, which is exactly what the
-    first GPU run reported. That must FAIL, not pass.
+    Whichever way the mismatch happens -- _WRAPPER_STRESS_SIGN out of step with
+    the binary it is driving, in either direction -- max|dS| comes back at twice
+    the stress magnitude with relative error ~2, which is exactly what the first
+    GPU run reported. That must FAIL, not pass.
+
+    The live risk is now the reverse of the original one: the constant is +1 for
+    binaries from 2026-08-16 on, and -1 for anything older, since getCellStress()
+    negated the tensor before then.
     """
     from ase.units import Bohr, Hartree
     printed = [[-1.1e-04, 0.0, 0.0], [0.0, -1.1e-04, 0.0], [0.0, 0.0, -1.1e-04]]
