@@ -2106,49 +2106,6 @@ namespace dftfe
                   << std::endl;
           }
       }
-    // Seed rhoOut with the density just restored.
-    //
-    // Everything above fills the rhoIn containers and leaves the rhoOut ones
-    // untouched. In a normal run that is fine: density.cc sizes and fills rhoOut
-    // during the SCF, so by the time anything reads it, it holds the last
-    // completed ground state. A restart has no such SCF. Control goes straight
-    // from here to the geometry optimizer, which moves the atoms first, and
-    // updateAtomPositionsAndMoveMesh calls noRemeshRhoDataInit, whose opening
-    // move is
-    //
-    //     d_densityInQuadValues = d_densityOutQuadValues;
-    //
-    // With rhoOut never populated that assigns zero-length containers over the
-    // density that was just read from the checkpoint, and the next access to it
-    // runs off the end -- SIGSEGV on the first ionic step after every restart,
-    // measured in job 8760658 on unmodified upstream.
-    //
-    // Note this is NOT limited to the mixing schemes that skip the resize block
-    // above. That block only resizes the OUTER vector to nDensityComponents; the
-    // inner MemoryStorage per component is left at length zero, unlike the rhoIn
-    // loop right beside it which resizes both. So ANDERSON_WITH_KERKER and
-    // ANDERSON_WITH_RESTA crash the same way plain ANDERSON does, just one
-    // indirection later.
-    //
-    // Semantically the seed is the right value and not merely a safe one: after
-    // a restart the previous step's converged ground state IS what was read
-    // back, so that is exactly what rhoOut should hold for the carry-forward to
-    // pick up. Assignment sizes and fills in one step, which is why it is used
-    // in preference to resizing and copying.
-    d_densityOutQuadValues = d_densityInQuadValues;
-    if (isGradDensityDataDependent)
-      d_gradDensityOutQuadValues = d_gradDensityInQuadValues;
-    if (isTauMGGA)
-      d_tauOutQuadValues = d_tauInQuadValues;
-    // Placed after the nodal block above, so this picks up the normalized and
-    // re-interpolated nodal density rather than the raw projection.
-    if (d_dftParamsPtr->mixingMethod == "ANDERSON_WITH_KERKER" ||
-        d_dftParamsPtr->mixingMethod == "ANDERSON_WITH_RESTA" ||
-        d_dftParamsPtr->mixingMethod == "LOW_RANK_DIELECM_PRECOND" ||
-        d_dftParamsPtr->mixingMethod == "ANDERSON_WITH_LDOS" ||
-        d_dftParamsPtr->useSymm)
-      d_densityOutNodalValues = d_densityInNodalValues;
-
     computingTimerStandard.leave_subsection("load Quad density");
   }
 

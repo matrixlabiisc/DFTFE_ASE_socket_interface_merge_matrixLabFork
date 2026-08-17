@@ -542,12 +542,6 @@ namespace dftfe
     dftfe::uInt              count = 0;
     std::vector<dftfe::uInt> countPerThread(d_nOMPThreads,
                                             0); // for each thread
-    // Cells whose centroid matched nothing in the master file. Counted
-    // separately from `count` because `count` cannot detect them: see the reset
-    // note in the search loop below. A checkpoint written on one mesh and read
-    // on another is the failure this exists to catch.
-    dftfe::uInt              unmatched = 0;
-    std::vector<dftfe::uInt> unmatchedPerThread(d_nOMPThreads, 0);
     if (nCells > 0)
       {
         typename dealii::DoFHandler<3>::active_cell_iterator cell =
@@ -559,7 +553,6 @@ namespace dftfe
         std::vector<std::vector<double>> dataInput;
         if (cell->is_locally_owned())
           {
-            bool matched = false;
             for (dftfe::uInt index = 0; index < startIndex.size(); ++index)
               {
                 if (std::fabs(cell->center()[0] - centroidX[index]) < 1e-6 &&
@@ -568,30 +561,19 @@ namespace dftfe
                   {
                     fileName      = folderPath + "/" + fileNames[index];
                     startLocation = startIndex[index];
-                    matched       = true;
                     break;
                   }
               }
-            if (matched)
+
+            dftUtils::readFile(dataInput, fileName);
+            for (dftfe::uInt q = 0; q < nQuadsPerCell; ++q)
               {
-                dftUtils::readFile(dataInput, fileName);
-                for (dftfe::uInt q = 0; q < nQuadsPerCell; ++q)
+                for (dftfe::Int iField = 0; iField < fieldDimension; ++iField)
                   {
-                    for (dftfe::Int iField = 0; iField < fieldDimension;
-                         ++iField)
-                      {
-                        quadratureValueData[q * fieldDimension + iField] =
-                          dataInput[startLocation + q][3 + iField];
-                      }
-                    count++;
+                    quadratureValueData[q * fieldDimension + iField] =
+                      dataInput[startLocation + q][3 + iField];
                   }
-              }
-            else
-              {
-                // Reading with an empty fileName would abort inside readFile
-                // with an unrelated message. Record it and let the check after
-                // the loop report the real cause.
-                ++unmatched;
+                count++;
               }
           }
 
@@ -607,15 +589,6 @@ namespace dftfe
 
             if (cell->is_locally_owned())
               {
-                // `fileName` and `startLocation` are firstprivate and carry the
-                // PREVIOUS cell's values into this iteration. Without this flag
-                // a cell whose centroid matches nothing keeps them, reads the
-                // previous cell's data, and still increments the counter -- so
-                // the `count < totalTarget` check below cannot see it and the
-                // restart proceeds on a density silently assembled from the
-                // wrong cells. That is the mesh-mismatch failure, and it has to
-                // be detected here or not at all.
-                bool matched = false;
                 for (dftfe::uInt index = 0; index < startIndex.size(); ++index)
                   {
                     if (std::fabs(cell->center()[0] - centroidX[index]) <
@@ -626,14 +599,8 @@ namespace dftfe
                       {
                         fileName      = folderPath + "/" + fileNames[index];
                         startLocation = startIndex[index];
-                        matched       = true;
                         break;
                       }
-                  }
-                if (!matched)
-                  {
-                    unmatchedPerThread[omp_get_thread_num()]++;
-                    continue;
                   }
                 if (fileName != fileNameOld)
                   {
@@ -660,31 +627,7 @@ namespace dftfe
     for (dftfe::Int i = 0; i < d_nOMPThreads; ++i)
       {
         count += countPerThread[i];
-        unmatched += unmatchedPerThread[i];
       }
-
-    // Reduced across the domain, not checked locally: a mesh mismatch need not
-    // be uniform, and one rank silently succeeding while another failed is the
-    // worst of the available outcomes. Every rank throws or none does.
-    const dftfe::uInt unmatchedGlobal =
-      dealii::Utilities::MPI::sum(unmatched, mpi_comm_domain);
-    if (unmatchedGlobal > 0)
-      {
-        AssertThrow(
-          false,
-          dealii::ExcMessage(
-            std::string(
-              "DFT-FE Error: ") +
-            std::to_string(unmatchedGlobal) +
-            " cells found no matching centroid in the '" + fieldName +
-            "' quadrature checkpoint, so the mesh this data was saved on is not "
-            "the mesh being read onto. This happens when the geometry moved "
-            "enough between saving and restarting that the mesh was rebuilt "
-            "differently. Loading anyway would produce a density assembled from "
-            "the wrong cells. Restart without LOAD QUAD DATA, or regenerate the "
-            "checkpoint on the current geometry."));
-      }
-
     if (count < totalTarget)
       {
         AssertThrow(false,
