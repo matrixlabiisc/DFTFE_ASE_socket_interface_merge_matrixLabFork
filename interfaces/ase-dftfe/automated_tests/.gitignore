@@ -20,3 +20,7 @@ gpu_shims_*/
 # are the 2 MB audit trail behind them and are regenerable (item 35).
 native_refs/
 native_refs_gpu/
+
+# BFGS logfiles written by restart_across_boundary (both arms), regenerated
+# every run.
+*.opt
