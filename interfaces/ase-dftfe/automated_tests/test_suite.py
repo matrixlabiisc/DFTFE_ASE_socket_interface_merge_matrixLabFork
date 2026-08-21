@@ -75,6 +75,11 @@ BINARY_KIND = {
     "al_slab_semiperiodic": "real",   # gamma-only: periodic in x/y, open along z
     "graphene_periodic": "complex",
     "al_bulk_periodic":  "complex",
+    # Both of these compare two arms against each other IN-CASE rather than
+    # against a stored number, so neither needs a reference and neither can go
+    # stale when references are reseeded. See RUN_ONLY below.
+    "lattice_translation_periodic": "real",   # gamma-only: periodic x/y, open z
+    "restart_across_boundary":      "real",
 }
 
 # Nothing is run-only: every case has at least one number gated at 1e-10 Ha.
@@ -84,7 +89,13 @@ BINARY_KIND = {
 # itself and started coming from native pGD, "the relaxed energy" became one
 # LBFGS implementation against another, and no fixed-configuration determinism
 # argument closes that. See check_relaxed.
-RUN_ONLY = set()
+# Two exceptions, added with the minimum-image fold. These cases assert a
+# RELATION between two runs -- that translating an atom by a lattice vector, or
+# taking an ionic step while it sits outside the cell, changes nothing -- and a
+# relation is stronger evidence than a pinned number: it cannot be satisfied by
+# a wrong-but-stable answer, and it needs no native reference to compare with.
+# They still fail loudly, from inside the case, at 1e-10 Ha.
+RUN_ONLY = {"lattice_translation_periodic", "restart_across_boundary"}
 
 ALL_TESTS = list(BINARY_KIND.keys())
 

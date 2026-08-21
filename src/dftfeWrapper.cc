@@ -1351,12 +1351,355 @@ namespace dftfe
         d_dftfeBasePtr->getAtomLocationsCart().size(),
       dealii::ExcMessage(
         "DFT-FE error: Incorrect size of atomsDisplacements vector."));
+
+    // Minimum image on the displacement, periodic directions only.
+    //
+    // Native GEOOPT never needed this. geoOptIon.cc:679-701 hands over the
+    // optimizer's own solution vector, which is a *step*, and DFT-FE holds
+    // exactly one copy of where the atoms are, so there is nothing for that
+    // step to disagree with -- geoOptIon.cc:817-821 does not even implement
+    // solution(), it throws. Every caller of this function instead keeps a
+    // second copy of the positions and reconstructs the step by subtracting:
+    // socket_interface.cc:800 and MDIEngine.cpp:619-621 both compute
+    // new_coords - getAtomPositionsCart(). DFT-FE's copy is wrapped into the
+    // cell (moveAtoms.cc:269-298) while the driver's is deliberately not
+    // (calculator.py:519-527 keeps it unwrapped so that a boundary crossing
+    // does not look like a lattice jump to the optimizer), so the subtraction
+    // picks up a whole lattice vector the moment an atom crosses a cell face.
+    // The bug needs two copies of the geometry; native has one.
+    //
+    // Under PBC a displacement between two configurations is defined only
+    // modulo a lattice vector, and the physical one is the shortest. This is
+    // not a new convention: it is the rule internal::wrapAtomsAcrossPeriodicBc
+    // (moveAtoms.cc:80-119) already applies to a *point*, applied here to a
+    // *difference*. In the run that first exposed this, the raw x component was
+    // 24.0249 Bohr against a 24.0081 Bohr cell edge; the minimum image is
+    // 0.0168 Bohr, which is the step the atom actually took. Left unfolded it
+    // exceeded moveAtoms.cc:258's 0.5 Bohr threshold on every ionic step, so
+    // DFT-FE rebuilt the vself bins from scratch (createAtomBins) instead of
+    // updating their boundary conditions, and eventually died in the rebuild.
+    //
+    // The fold has to go through fractional coordinates. DFT-FE constrains the
+    // domain vectors only to be three in number and right handed
+    // (dft.cc:517-546); its own tests carry fully triclinic cells, including
+    // testsGPU/pseudopotential/real/domainVectors_ReS2.inp with all three
+    // vectors mutually non-orthogonal. Subtracting one lattice vector
+    // therefore shifts all three Cartesian components, and a per-Cartesian
+    // component fold would be silently wrong for every non-orthogonal cell.
+    std::vector<std::vector<double>> disp = atomsDisplacements;
+
+    std::vector<bool> periodicBc(3, false);
+    periodicBc[0] = d_dftfeParamsPtr->periodicX;
+    periodicBc[1] = d_dftfeParamsPtr->periodicY;
+    periodicBc[2] = d_dftfeParamsPtr->periodicZ;
+
+    if (periodicBc[0] || periodicBc[1] || periodicBc[2])
+      {
+        const std::vector<std::vector<double>> cell = d_dftfeBasePtr->getCell();
+        std::vector<double>                    cellVectorsFlattened(9, 0.0);
+        for (dftfe::uInt idim = 0; idim < 3; idim++)
+          for (dftfe::uInt jdim = 0; jdim < 3; jdim++)
+            cellVectorsFlattened[3 * idim + jdim] = cell[idim][jdim];
+
+        const dftfe::uInt numberGlobalAtoms = disp.size();
+
+        // imageVec[3*i+idim] is the whole number of lattice vector idim to be
+        // removed from atom i's displacement. It stays zero for every
+        // non-periodic direction: there is no image to fold to there, and
+        // dft.cc:1102-1109 requires a non-periodic fractional coordinate to
+        // lie strictly inside the cell, so folding one would move the atom
+        // through vacuum into a different structure. On a mixed-PBC slab,
+        // folding a periodic direction can still change the Cartesian
+        // component along the non-periodic one when that lattice vector has a
+        // projection on it; that is correct -- it is the same atom.
+        std::vector<dftfe::Int> imageVec(3 * numberGlobalAtoms, 0);
+        std::vector<double>     residualFrac(3 * numberGlobalAtoms, 0.0);
+
+        for (dftfe::uInt i = 0; i < numberGlobalAtoms; ++i)
+          {
+            // The cell corner cancels identically in a difference of two
+            // positions, so the two-argument overload -- which expects a
+            // coordinate already taken relative to the corner -- is the right
+            // one here, and no corner has to be constructed.
+            const std::vector<double> frac =
+              dftUtils::getFractionalCoordinates(cellVectorsFlattened, disp[i]);
+            for (dftfe::uInt idim = 0; idim < 3; ++idim)
+              if (periodicBc[idim])
+                {
+                  const double image         = std::round(frac[idim]);
+                  imageVec[3 * i + idim]     = static_cast<dftfe::Int>(image);
+                  residualFrac[3 * i + idim] = frac[idim] - image;
+                }
+          }
+
+        // Synchronize the way moveAtoms.cc:250-267 and :292 synchronize the
+        // wrap decision and the wrapped coordinates: the branch is a
+        // std::round() of an LU solve, and two ranks that disagreed by one
+        // image would move the mesh differently and then diverge inside the
+        // collectives of initNoRemesh(). Broadcasting the integers rather than
+        // the folded doubles makes the arithmetic below identical on every
+        // rank by construction.
+        if (numberGlobalAtoms > 0)
+          {
+            dftfe::Int imageVecSize = imageVec.size();
+            MPI_Bcast(&(imageVec[0]),
+                      imageVecSize,
+                      dftfe::dataTypes::mpi_type_id(&imageVec[0]),
+                      0,
+                      d_mpi_comm_parent);
+          }
+
+        dealii::ConditionalOStream pcout(
+          std::cout,
+          (dealii::Utilities::MPI::this_mpi_process(d_mpi_comm_parent) == 0));
+
+        dftfe::uInt numberAtomsFolded = 0;
+        dftfe::Int  maxAbsImage       = 0;
+        double      maxAbsResidual    = 0.0;
+        double      maxFoldedNorm     = 0.0;
+
+        // Fold whatever whole number of lattice vectors separates the two copies
+        // of the geometry, not just one. What arrives here is not the optimizer's
+        // step: it is step + n*a, where n is how far the driver's copy has
+        // drifted from DFT-FE's. DFT-FE wraps its own copy back into the cell
+        // whenever a step is large enough to force it (moveAtoms.cc:246-298; with
+        // FLOATING NUCLEAR CHARGES the small-step branch at :301-345 defers the
+        // wrap instead), while the external driver deliberately never wraps
+        // (calculator.py:519-527, and LAMMPS and i-PI keep unwrapped coordinates
+        // by default). So n grows by one every time an atom nets a crossing of
+        // the same face, without bound, and a diffusing ion in an MD run reaches
+        // n = 2 and beyond as a matter of course. Subtracting whole lattice
+        // vectors is an exact symmetry of the periodic system, so the fold is
+        // right for any n; refusing n >= 2 would abort a correct trajectory mid-
+        // run, which is why this counts rather than asserts.
+        for (dftfe::uInt i = 0; i < numberGlobalAtoms; ++i)
+          {
+            bool folded = false;
+            for (dftfe::uInt idim = 0; idim < 3; ++idim)
+              {
+                const dftfe::Int image = imageVec[3 * i + idim];
+                if (image == 0)
+                  continue;
+                folded = true;
+
+                const dftfe::Int absImage = image < 0 ? -image : image;
+                if (absImage > maxAbsImage)
+                  maxAbsImage = absImage;
+                const double absResidual =
+                  std::fabs(residualFrac[3 * i + idim]);
+                if (absResidual > maxAbsResidual)
+                  maxAbsResidual = absResidual;
+              }
+
+            if (!folded)
+              continue;
+
+            // Nothing below runs for an atom whose image vector is zero, so an
+            // ordinary small step leaves the caller's doubles untouched rather
+            // than reconstructed. That matters: getFractionalCoordinates() is
+            // an LU solve (dftUtils.h:123-151), and round tripping every
+            // displacement through it would perturb the last bits of every
+            // step DFT-FE has ever taken through this path, and with them
+            // every stored reference energy. Subtracting whole lattice vectors
+            // from the original Cartesian components keeps the fold exact in
+            // the same sense.
+            ++numberAtomsFolded;
+            for (dftfe::uInt idim = 0; idim < 3; ++idim)
+              {
+                const double image =
+                  static_cast<double>(imageVec[3 * i + idim]);
+                if (image == 0.0)
+                  continue;
+                for (dftfe::uInt jdim = 0; jdim < 3; ++jdim)
+                  disp[i][jdim] -= image * cell[idim][jdim];
+              }
+
+            const double foldedNorm =
+              std::sqrt(disp[i][0] * disp[i][0] + disp[i][1] * disp[i][1] +
+                        disp[i][2] * disp[i][2]);
+            if (foldedNorm > maxFoldedNorm)
+              maxFoldedNorm = foldedNorm;
+          }
+
+        // Report the fold even when it is entirely routine, and report the
+        // three numbers that say which kind of fold it was. This bug survived
+        // because the wrong displacement was applied in silence for a whole
+        // relaxation campaign; a boundary crossing is a normal event, but it
+        // has to be visible in the output when it happens, so this sits at
+        // verbosity >= 1 alongside moveAtoms.cc:313's coordinate dump rather
+        // than a level above it.
+        //
+        // Nothing here aborts, deliberately. The one input that would justify
+        // aborting -- a driver handing over absolute positions where a step
+        // was expected -- cannot be recognised from the image count: both
+        // positions lie inside the cell, so their difference has every
+        // fractional component strictly inside (-1,1) and rounds to an image
+        // of 0 or +-1, exactly like a genuine crossing. What separates the two
+        // is the shape of the fold, which is what these numbers carry. A
+        // boundary crossing on a converging trajectory folds a handful of
+        // atoms out of thousands and leaves a rounding residual of order 1e-3
+        // (0.0168 Bohr left in a 24.0081 Bohr edge, in the run that first
+        // exposed this). A driver sending a geometry folds a large fraction of
+        // the atoms at once and leaves residuals spread over the whole
+        // interval, and the displacements it applies are a sizeable fraction of
+        // the cell rather than a step. Measured on a 2000-atom LLZO cell with
+        // random absolute positions on both sides: 57% of atoms fold, 76% of
+        // the folded axes leave a residual above 0.25, and the largest applied
+        // displacement is 20.5 Bohr, against 1 atom, 5e-4 and 0.017 Bohr for a
+        // real crossing on the same cell. Note also that this input cannot be
+        // told apart by the image count -- both positions lie inside the cell,
+        // so |image| never exceeds 1, which is why an earlier version of this
+        // code that aborted on |image| >= 2 could not have caught it and
+        // aborted diffusive MD instead.
+        //
+        // The last number also covers the one case where the fold itself can
+        // be wrong. Rounding recovers the true image only while every
+        // fractional component of the true step is below 0.5 in magnitude,
+        // i.e. while the step is shorter than half the smallest INTERPLANAR
+        // SPACING V/|a_j x a_k| -- not half the shortest cell edge, which is
+        // larger and can be much larger for a compact primitive cell (the
+        // shipped testsGPU/pseudopotential/complex/domainVectorsGaAs.inp has
+        // 7.68 Bohr edges but 6.27 Bohr spacings). A step that long is far
+        // outside anything the callers produce -- NEB clamps each component to
+        // 0.4 Bohr (nudgedElasticBandClass.cc:1181-1184) and external
+        // optimizers move by the order of MAXIMUM ION UPDATE STEP, 0.5 Bohr by
+        // default -- but if it ever happened the applied displacement printed
+        // here is what would show it.
+        if (numberAtomsFolded > 0 && d_dftfeParamsPtr->verbosity >= 1)
+          pcout << "Minimum image applied to the displacement of "
+                << numberAtomsFolded << " of " << numberGlobalAtoms
+                << " atom(s) crossing a periodic cell face: largest image "
+                << maxAbsImage << " lattice vector(s), largest rounding "
+                << "residual " << maxAbsResidual
+                << " of a lattice vector, largest applied displacement "
+                << maxFoldedNorm
+                << " Bohr. A residual approaching 0.5, or a fold touching a "
+                << "large fraction of the atoms, means the driver is not "
+                << "sending what this function expects: a step from the "
+                << "current positions, not a new geometry." << std::endl;
+      }
+
+    // Snapshot DFT-FE's copy of the geometry before the move, so that what the
+    // driver asked for can be checked against what DFT-FE ended up holding.
+    // See the invariant below for why this is worth two extra O(N) passes.
+    const std::vector<std::vector<double>> positionsBefore =
+      getAtomPositionsCart();
+
     std::vector<dealii::Tensor<1, 3, double>> dispVec(
       atomsDisplacements.size());
     for (dftfe::uInt i = 0; i < dispVec.size(); ++i)
       for (dftfe::uInt j = 0; j < 3; ++j)
-        dispVec[i][j] = atomsDisplacements[i][j];
+        dispVec[i][j] = disp[i][j];
     d_dftfeBasePtr->updateAtomPositionsAndMoveMesh(dispVec);
+
+    // The invariant that closes the failure CLASS, not just the fold above.
+    //
+    // Every caller of this function keeps its own copy of the geometry and
+    // reconstructs a step by subtracting DFT-FE's copy from it
+    // (socket_interface.cc:800, MDIEngine.cpp:619-621). Nothing anywhere ever
+    // checked that the two copies still agree afterwards. That is precisely how
+    // the 24 Bohr displacement of job 8761021 survived: it was applied in
+    // silence for a whole relaxation campaign, every energy and force landing on
+    // a geometry the driver had not asked for, and it surfaced only as a SIGSEGV
+    // three ionic steps later on 32 nodes. A fold that repairs one such
+    // disagreement leaves the next one just as invisible, so state the invariant
+    // and enforce it:
+    //
+    //   after  ==  before + (what the driver asked for),  modulo whole lattice
+    //   vectors along periodic directions, and exactly along open ones.
+    //
+    // Note this is checked against atomsDisplacements -- the caller's RAW
+    // request -- not against the folded disp, which would make it a tautology.
+    // The fold is allowed to change the answer by whole lattice vectors and by
+    // nothing else, which is exactly what "modulo" states.
+    //
+    // It holds by construction of moveAtoms.cc, and that is what makes it a
+    // useful check rather than a guess about DFT-FE's behaviour: positions are
+    // only ever advanced by atomLocations += disp (:308-310, :383-385) or by
+    // wrapAtomsAcrossPeriodicBc(coor + disp) (:277-296). No branch clamps,
+    // symmetrizes, projects or rescales a displacement, so any violation is a
+    // genuine defect -- in the fold, in DFT-FE's own wrap, in the mesh move, or
+    // in a driver whose frame drifted in a way this code does not model.
+    //
+    // Deliberately wrap-agnostic: with FLOATING NUCLEAR CHARGES a small step
+    // takes moveAtoms.cc:301-345, which defers the wrap, while a large one takes
+    // :269-298 and wraps immediately. Both satisfy the invariant -- the
+    // unwrapped case with an image of exactly zero -- so the check does not have
+    // to know which branch ran, and cannot go stale if that choice changes.
+    //
+    // This aborts rather than warning. A violation means every energy and force
+    // from here on describes a geometry nobody asked for; continuing would
+    // produce numbers that look fine and are not, which is the one outcome this
+    // project has already paid for once.
+    {
+      const std::vector<std::vector<double>> positionsAfter =
+        getAtomPositionsCart();
+      const std::vector<std::vector<double>> cellCheck = d_dftfeBasePtr->getCell();
+      std::vector<double>                    cellCheckFlattened(9, 0.0);
+      for (dftfe::uInt idim = 0; idim < 3; idim++)
+        for (dftfe::uInt jdim = 0; jdim < 3; jdim++)
+          cellCheckFlattened[3 * idim + jdim] = cellCheck[idim][jdim];
+
+      // In fractional units, so the same number means the same thing on every
+      // cell and every axis. 1e-8 of a lattice vector is ~2e-7 Bohr on the cells
+      // this runs on -- six orders above the ~1e-13 Bohr an LU round trip and a
+      // wrap cost, and six orders below the 0.02 of a lattice vector that the
+      // smallest defect of this class would produce (moveAtoms.cc:258's 0.5 Bohr
+      // remesh threshold against a ~24 Bohr edge). A whole missed lattice vector
+      // is 1.0, eight orders clear.
+      const double fracTol        = 1e-8;
+      double       worstResidual  = 0.0;
+      double       worstDeviation = 0.0;
+      dftfe::uInt  worstAtom      = 0;
+      dftfe::uInt  worstDim       = 0;
+
+      for (dftfe::uInt i = 0; i < positionsAfter.size(); ++i)
+        {
+          std::vector<double> deviation(3, 0.0);
+          for (dftfe::uInt j = 0; j < 3; ++j)
+            deviation[j] = positionsAfter[i][j] - positionsBefore[i][j] -
+                           atomsDisplacements[i][j];
+
+          const std::vector<double> frac =
+            dftUtils::getFractionalCoordinates(cellCheckFlattened, deviation);
+          for (dftfe::uInt idim = 0; idim < 3; ++idim)
+            {
+              // Periodic: the deviation must be a whole lattice vector. Open:
+              // there is no image to fold to, so it must be nothing at all.
+              const double residual =
+                periodicBc[idim] ?
+                  std::fabs(frac[idim] - std::round(frac[idim])) :
+                  std::fabs(frac[idim]);
+              if (residual > worstResidual)
+                {
+                  worstResidual = residual;
+                  worstAtom     = i;
+                  worstDim      = idim;
+                  worstDeviation =
+                    std::sqrt(deviation[0] * deviation[0] +
+                              deviation[1] * deviation[1] +
+                              deviation[2] * deviation[2]);
+                }
+            }
+        }
+
+      if (worstResidual >= fracTol)
+        {
+          std::ostringstream message;
+          message
+            << "DFT-FE error: the atom positions DFT-FE now holds do not match "
+            << "what the driver asked for. Atom " << worstAtom << ", direction "
+            << worstDim << " is off by " << worstResidual
+            << " of a lattice vector (tolerance " << fracTol
+            << "), with a total deviation of " << worstDeviation
+            << " Bohr from the requested position. The requested displacement "
+            << "must be reproduced exactly along open directions and up to whole "
+            << "lattice vectors along periodic ones; it was not, so every energy "
+            << "and force computed from here would describe a geometry that was "
+            << "never requested.";
+          AssertThrow(false, dealii::ExcMessage(message.str()));
+        }
+    }
   }
 
   void
