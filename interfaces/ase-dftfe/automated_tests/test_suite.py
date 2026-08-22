@@ -80,6 +80,12 @@ BINARY_KIND = {
     # stale when references are reseeded. See RUN_ONLY below.
     "lattice_translation_periodic": "real",   # gamma-only: periodic x/y, open z
     "restart_across_boundary":      "real",
+    # The complex twin of the case above. It exists because until it was added,
+    # nothing had ever executed the changed function in a complex-arithmetic
+    # build: both complex cases here are single points, and DFT-FE's complex
+    # ctest suite moves atoms only through its own MD driver, never through the
+    # wrapper. See the case's docstring.
+    "restart_across_boundary_kpoints": "complex",
 }
 
 # Nothing is run-only: every case has at least one number gated at 1e-10 Ha.
@@ -95,7 +101,8 @@ BINARY_KIND = {
 # relation is stronger evidence than a pinned number: it cannot be satisfied by
 # a wrong-but-stable answer, and it needs no native reference to compare with.
 # They still fail loudly, from inside the case, at 1e-10 Ha.
-RUN_ONLY = {"lattice_translation_periodic", "restart_across_boundary"}
+RUN_ONLY = {"lattice_translation_periodic", "restart_across_boundary",
+            "restart_across_boundary_kpoints"}
 
 ALL_TESTS = list(BINARY_KIND.keys())
 
