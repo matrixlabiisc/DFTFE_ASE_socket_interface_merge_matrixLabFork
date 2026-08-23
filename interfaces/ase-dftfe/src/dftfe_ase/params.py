@@ -123,6 +123,13 @@ PARAM_TABLE = [
     ParamSpec("scalapack_procs",            "SCALAPACKPROCS",                       EIG,      "int",   "planned", "0 = auto; tuned per rank count in scaling decks"),
     ParamSpec("scalapack_block_size",       "SCALAPACK BLOCK SIZE",                 EIG,      "int",   "planned"),
     ParamSpec("reuse_lanczos_upper_bound",  "REUSE LANCZOS UPPER BOUND",            EIG,      "bool",  "planned"),
+    # Both default to reuse ON in DFT-FE (REUSE DENSITY=1, REUSE WFC=true), so a
+    # socket relaxation gets them without asking. They are exposed to make the
+    # opposite reachable: reuse_density=0 reproduces the from-scratch initRho()
+    # every ionic step, which is what socket mode did before the solver-mode gate
+    # in dft.cc was widened to admit "GS". Keep them for A/B timing runs.
+    ParamSpec("reuse_density",              "REUSE DENSITY",                        OPT,      "int",   "planned", "0=from scratch, 1=reuse previous rho, 2=atomic-rho split"),
+    ParamSpec("reuse_wfc",                  "REUSE WFC",                            OPT,      "bool",  "planned"),
     ParamSpec("allow_multiple_passes_post_first_scf", "ALLOW MULTIPLE PASSES POST FIRST SCF", EIG, "bool", "planned"),
     ParamSpec("use_mixed_prec_cgs_sr",      "USE MIXED PREC CGS SR",                EIG,      "bool",  "planned"),
     ParamSpec("use_mixed_prec_xtox",        "USE MIXED PREC XTOX",                  EIG,      "bool",  "planned", "v1.0 decks: USE MIXED PREC CGS O"),

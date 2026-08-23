@@ -226,6 +226,25 @@ namespace dftfe
     dftParameters();
 
     /**
+     * @brief True when an external driver moves the atoms between ground-state
+     * solves, so the previous step's density is a good initial guess for the
+     * next one.
+     *
+     * GEOOPT is the in-tree case. GS is the socket case: a socket-driven run
+     * relaxes exactly like GEOOPT does -- ASE moves the atoms, DFT-FE moves the
+     * mesh and re-solves -- but its solver mode is fixed to "GS" by the socket
+     * constructor in dftfeWrapper, so gating density reuse on the mode string
+     * alone silently excluded it and every ionic step fell through to a full
+     * initRho(). MD is deliberately not included: it has its own reuse policy
+     * through EXTRAPOLATE DENSITY, and admitting it here would shadow it.
+     */
+    bool
+    isDensityReuseAcrossIonicStepsMode() const
+    {
+      return solverMode == "GEOOPT" || solverMode == "GS";
+    }
+
+    /**
      * Parse parameters.
      */
     void

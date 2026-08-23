@@ -75,6 +75,17 @@ BINARY_KIND = {
     "al_slab_semiperiodic": "real",   # gamma-only: periodic in x/y, open along z
     "graphene_periodic": "complex",
     "al_bulk_periodic":  "complex",
+    # Both of these compare two arms against each other IN-CASE rather than
+    # against a stored number, so neither needs a reference and neither can go
+    # stale when references are reseeded. See RUN_ONLY below.
+    "lattice_translation_periodic": "real",   # gamma-only: periodic x/y, open z
+    "restart_across_boundary":      "real",
+    # The complex twin of the case above. It exists because until it was added,
+    # nothing had ever executed the changed function in a complex-arithmetic
+    # build: both complex cases here are single points, and DFT-FE's complex
+    # ctest suite moves atoms only through its own MD driver, never through the
+    # wrapper. See the case's docstring.
+    "restart_across_boundary_kpoints": "complex",
 }
 
 # Nothing is run-only: every case has at least one number gated at 1e-10 Ha.
@@ -84,7 +95,14 @@ BINARY_KIND = {
 # itself and started coming from native pGD, "the relaxed energy" became one
 # LBFGS implementation against another, and no fixed-configuration determinism
 # argument closes that. See check_relaxed.
-RUN_ONLY = set()
+# Two exceptions, added with the minimum-image fold. These cases assert a
+# RELATION between two runs -- that translating an atom by a lattice vector, or
+# taking an ionic step while it sits outside the cell, changes nothing -- and a
+# relation is stronger evidence than a pinned number: it cannot be satisfied by
+# a wrong-but-stable answer, and it needs no native reference to compare with.
+# They still fail loudly, from inside the case, at 1e-10 Ha.
+RUN_ONLY = {"lattice_translation_periodic", "restart_across_boundary",
+            "restart_across_boundary_kpoints"}
 
 ALL_TESTS = list(BINARY_KIND.keys())
 
@@ -225,17 +243,19 @@ def check_stress(computed, ref_list) -> tuple:
     got = stress_to_ha_per_bohr3(computed)
     # SIGN CONVENTION: none needed. The reference is DFT-FE's printed cell stress,
     # which job 8756125 measured to be ASE convention already -- dE/dV came out at
-    # -1.0958e-04 Ha/Bohr^3 against a printed -1.1035e-04, same sign, ratio 0.993.
-    # The interface therefore undoes dftfeWrapper's negation on its own side
-    # (calculator._WRAPPER_STRESS_SIGN), so both sides are in ASE convention here
-    # and this comparison is direct.
+    # -1.0958e-04 Ha/Bohr^3 against a printed -1.1035e-04, same sign, ratio 0.993
+    # -- and job 8756978 confirmed the same holds off-diagonal, the printed
+    # sigma_xy crossing zero at e = 0.0872 where the energy curve turns over at
+    # e = 0.0862. Since 2026-08-16 dftfeWrapper::getCellStress() returns that
+    # tensor unnegated too, so both sides are in ASE convention and the comparison
+    # is direct, with calculator._WRAPPER_STRESS_SIGN at +1.
     #
     # It was briefly the other way round: the first GPU run reported max|dS| =
     # 2.207e-04 at relative error 2.0 on a ~1.1e-04 stress -- exactly twice the
     # magnitude, a pure sign flip -- and the first fix negated the REFERENCE,
     # which made the two arms agree with each other while both disagreed with
-    # ASE's definition. If that constant ever returns to +1 without this comment
-    # changing, this check will fail at exactly 2x the stress magnitude again.
+    # ASE's definition. Any future mismatch between that constant and the binary
+    # it drives shows up here the same way, at exactly 2x the stress magnitude.
     ref = np.array(ref_list, dtype=float)
     asym = np.abs(ref - ref.T).max()
     diff = np.abs(got - (ref + ref.T) / 2.0)

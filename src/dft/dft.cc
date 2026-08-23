@@ -1671,7 +1671,7 @@ namespace dftfe
         noRemeshRhoDataInit();
 
         if (d_dftParamsPtr->reuseDensityGeoOpt >= 1 &&
-            d_dftParamsPtr->solverMode == "GEOOPT")
+            d_dftParamsPtr->isDensityReuseAcrossIonicStepsMode())
           {
             if (d_dftParamsPtr->reuseDensityGeoOpt == 2 &&
                 d_dftParamsPtr->spinPolarized != 1)

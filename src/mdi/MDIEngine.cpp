@@ -983,20 +983,31 @@ namespace dftfe
   {
     d_dftfeWrapper.computeStress();
 
-    // NOTE: vtensor should be QM virial values (symmetric tensor)
+    // MDI's <STRESS carries an intensive STRESS tensor, not a virial, despite
+    // the name used by some drivers: LAMMPS receives these 9 values and does the
+    // volume multiplication itself (src/MDI/fix_mdi_qm.cpp), so nothing is
+    // scaled by Omega here.
+    //
+    // The sign convention on that wire is pressure-positive, i.e. the negative
+    // of sigma = (1/Omega) dE/deps. LAMMPS acting as an MDI engine answers
+    // <STRESS with its own pressure tensor unnegated, and as a driver applies no
+    // sign change on receipt. getCellStress() returns the tension-positive form,
+    // so it is negated here. (The negation used to live in getCellStress()
+    // itself, which gave every other caller of that function, ASE included, the
+    // wrong sign.)
     std::vector<std::vector<double>> stressTensor =
       d_dftfeWrapper.getCellStress();
 
     std::vector<double> stressTensorFlattened(9, 0.0);
-    stressTensorFlattened[0] = stressTensor[0][0];
-    stressTensorFlattened[1] = stressTensor[0][1];
-    stressTensorFlattened[2] = stressTensor[0][2];
-    stressTensorFlattened[3] = stressTensor[1][0];
-    stressTensorFlattened[4] = stressTensor[1][1];
-    stressTensorFlattened[5] = stressTensor[1][2];
-    stressTensorFlattened[6] = stressTensor[2][0];
-    stressTensorFlattened[7] = stressTensor[2][1];
-    stressTensorFlattened[8] = stressTensor[2][2];
+    stressTensorFlattened[0] = -stressTensor[0][0];
+    stressTensorFlattened[1] = -stressTensor[0][1];
+    stressTensorFlattened[2] = -stressTensor[0][2];
+    stressTensorFlattened[3] = -stressTensor[1][0];
+    stressTensorFlattened[4] = -stressTensor[1][1];
+    stressTensorFlattened[5] = -stressTensor[1][2];
+    stressTensorFlattened[6] = -stressTensor[2][0];
+    stressTensorFlattened[7] = -stressTensor[2][1];
+    stressTensorFlattened[8] = -stressTensor[2][2];
 
     if (d_root == 1)
       {
